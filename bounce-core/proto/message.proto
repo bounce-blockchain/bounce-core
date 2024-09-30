@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package communication;
+
+service MCService {
+    rpc HandleMessage (Message) returns (Response);
+}
+
+service GSService {
+    rpc HandleStart (Start) returns (Response);
+}
+
+service SATService {
+    rpc HandleStart (Start) returns (Response);
+}
+
+service SSService {
+    rpc HandleStart (Start) returns (Response);
+    rpc HandleSignMerkleTreeResponse (Response) returns (Response);
+}
+
+message Message {
+    string content = 1;
+    string sender = 2;
+}
+
+message Response {
+    string message = 1;
+}
+
+message Start {
+    string content = 1;
+    string sender = 2;
+}

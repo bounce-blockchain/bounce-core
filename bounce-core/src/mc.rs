@@ -1,5 +1,5 @@
 use tonic::{transport::Server, Request, Response, Status};
-use communication::{mc_service_server::{McService, McServiceServer}, Message, Response as GrpcResponse};
+use communication::{mc_service_server::{McService, McServiceServer}, Start, Message, Response as GrpcResponse};
 use crate::config::Config;
 use tokio::runtime::Runtime;
 use std::env;
@@ -49,29 +49,29 @@ pub async fn send_start_message(config: &Config) -> Result<(), Box<dyn std::erro
     println!("Sending start message to all instances");
     for gs in &config.gs {
         let mut client = communication::gs_service_client::GsServiceClient::connect(format!("http://{}:37129", gs.ip)).await?;
-        let request = tonic::Request::new(Message {
+        let request = tonic::Request::new(Start {
             content: "Start".into(),
             sender: "MC".into(),
         });
-        let response = client.handle_message(request).await?;
+        let response = client.handle_start(request).await?;
         println!("Response from GS: {:?}", response.into_inner().message);
     }
     for ss in &config.ss {
         let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss.ip)).await?;
-        let request = tonic::Request::new(Message {
+        let request = tonic::Request::new(Start {
             content: "Start".into(),
             sender: "MC".into(),
         });
-        let response = client.handle_message(request).await?;
+        let response = client.handle_start(request).await?;
         println!("Response from SS: {:?}", response.into_inner().message);
     }
     for sat in &config.sat {
         let mut client = communication::sat_service_client::SatServiceClient::connect(format!("http://{}:37131", sat.ip)).await?;
-        let request = tonic::Request::new(Message {
+        let request = tonic::Request::new(Start {
             content: "Start".into(),
             sender: "MC".into(),
         });
-        let response = client.handle_message(request).await?;
+        let response = client.handle_start(request).await?;
         println!("Response from GS: {:?}", response.into_inner().message);
     }
 

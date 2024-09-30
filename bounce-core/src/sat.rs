@@ -1,5 +1,5 @@
 use tonic::{transport::Server, Request, Response, Status};
-use communication::{sat_service_server::{SatService, SatServiceServer}, Message, Response as GrpcResponse};
+use communication::{sat_service_server::{SatService, SatServiceServer}, Start, Response as GrpcResponse};
 use crate::config::Config;
 
 pub mod communication {
@@ -11,14 +11,14 @@ pub struct Sat {}
 
 #[tonic::async_trait]
 impl SatService for Sat {
-    async fn handle_message(
+    async fn handle_start(
         &self,
-        request: Request<Message>,
+        start: Request<Start>,
     ) -> Result<Response<GrpcResponse>, Status> {
-        println!("Sat received a message from {}: {:?}", request.get_ref().sender, request.get_ref().content);
+        println!("Sat received a message from {}: {:?}", start.get_ref().sender, start.get_ref().content);
 
         let reply = communication::Response {
-            message: format!("Sat processed the message: {}", request.get_ref().content),
+            message: format!("Sat processed the message: {}", start.get_ref().content),
         };
 
         Ok(Response::new(reply))

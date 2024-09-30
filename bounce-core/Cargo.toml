@@ -1,0 +1,38 @@
+[package]
+name = "bounce-core"
+version = "0.1.0"
+authors = ["Xiaoteng (Frank) Liu <xiaoteng.liu@nyu.edu>"]
+edition = "2021"
+
+[dependencies]
+bls = { path = "../bls", features = ["proptest"] }
+bincode = { workspace = true }
+tonic = "0.12.3"
+serde = { workspace = true}
+tokio = { version = "1.40.0", features = ["full"] }
+prost = "0.13.3"
+toml = "0.8.19"
+keccak-hash = { workspace = true }
+rand = { workspace = true }
+rayon = "1.8.0"
+rkyv = { workspace = true }
+
+[build-dependencies]
+prost-build = "0.13.3"
+tonic-build = "0.12.3"
+
+[[bin]]
+name = "ss"
+path = "src/ss.rs"
+
+[[bin]]
+name = "gs"
+path = "src/gs.rs"
+
+[[bin]]
+name = "sat"
+path = "src/sat.rs"
+
+[[bin]]
+name = "mc"
+path = "src/mc.rs"

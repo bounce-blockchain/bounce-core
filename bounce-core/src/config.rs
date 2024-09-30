@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::fs;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default, Clone)]
 pub struct Config {
     pub mc: Component,
     pub ss: Vec<Component>,
@@ -9,7 +9,7 @@ pub struct Config {
     pub sat: Vec<Component>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default, Clone)]
 pub struct Component {
     pub ip: String,
 }

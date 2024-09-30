@@ -1,0 +1,37 @@
+[package]
+name = "bls"
+version = "0.1.0"
+authors = ["Taegyun Kim <k.taegyun@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+blst = { workspace = true }
+proptest = { workspace = true }
+proptest-derive = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+rand_chacha = "0.3.1"
+rand_core = "0.6.4"
+
+[dev-dependencies]
+criterion = { workspace = true }
+ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
+hex = { workspace = true }
+k256 = { version = "0.13.4", features = ["ecdsa-core"] }
+
+
+[[bench]]
+name = "bls"
+harness = false
+
+[[bench]]
+name = "ecc"
+harness = false
+
+[[bench]]
+name = "pop"
+harness = false
+
+[features]
+proptest = []

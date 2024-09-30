@@ -1,0 +1,9 @@
+crate::impl_bls_variant!(
+    min_pk,
+    96,
+    48,
+    b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_",
+    b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_AUG_",
+    b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_",
+    b"BLS_POP_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_",
+);
