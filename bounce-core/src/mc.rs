@@ -65,15 +65,15 @@ pub async fn send_start_message(config: &Config) -> Result<(), Box<dyn std::erro
         let response = client.handle_start(request).await?;
         println!("Response from SS: {:?}", response.into_inner().message);
     }
-    for sat in &config.sat {
-        let mut client = communication::sat_service_client::SatServiceClient::connect(format!("http://{}:37131", sat.ip)).await?;
-        let request = tonic::Request::new(Start {
-            content: "Start".into(),
-            sender: "MC".into(),
-        });
-        let response = client.handle_start(request).await?;
-        println!("Response from GS: {:?}", response.into_inner().message);
-    }
+    // for sat in &config.sat {
+    //     let mut client = communication::sat_service_client::SatServiceClient::connect(format!("http://{}:37131", sat.ip)).await?;
+    //     let request = tonic::Request::new(Start {
+    //         content: "Start".into(),
+    //         sender: "MC".into(),
+    //     });
+    //     let response = client.handle_start(request).await?;
+    //     println!("Response from GS: {:?}", response.into_inner().message);
+    // }
 
     // Similarly, send the start message to GS and SAT instances.
 
