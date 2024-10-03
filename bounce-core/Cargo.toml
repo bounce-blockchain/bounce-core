@@ -7,6 +7,7 @@ edition = "2021"
 [dependencies]
 bls = { path = "../bls", features = ["proptest"] }
 bincode = { workspace = true }
+key-manager = { path = "../key-manager" }
 tonic = "0.12.3"
 serde = { workspace = true}
 tokio = { version = "1.40.0", features = ["full"] }
@@ -16,6 +17,7 @@ keccak-hash = { workspace = true }
 rand = { workspace = true }
 rayon = "1.8.0"
 rkyv = { workspace = true }
+log = { workspace = true }
 
 [build-dependencies]
 prost-build = "0.13.3"

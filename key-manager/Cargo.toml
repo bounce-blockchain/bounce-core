@@ -1,0 +1,17 @@
+[package]
+name = "key-manager"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bls = { path = "../bls", features = ["proptest"] }
+clap = { workspace = true }
+serde = { version = "1.0.210", features = ["derive"] }
+config = "0.14.0"
+log = { workspace = true }
+
+[[bin]]
+name = "keygen"
+path = "src/keygen.rs"

@@ -3,10 +3,15 @@ use std::fs;
 
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct Config {
-    pub mc: Component,
+    pub mc: MCComponent,
     pub ss: Vec<Component>,
     pub gs: Vec<Component>,
     pub sat: Vec<Component>,
+}
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct MCComponent {
+    pub ip: String,
+    pub num_keys: u32,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
