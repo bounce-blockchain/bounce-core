@@ -106,7 +106,8 @@ impl SS {
             txs: self.transactions.clone(),
             hashes: self.tx_hashes.clone(),
         };
-        let addr: SocketAddr = format!("127.0.0.1:{}", self.gs_tx_receiver_ports[0]).parse().unwrap();
+        let gs_ip = &self.config.gs[0].ip;
+        let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
         println!("Spawning process to send sign_merkle_tree_request to {}", addr);
         tokio::spawn(async move {
             match TcpStream::connect(&addr).await {
