@@ -3,6 +3,13 @@ use serde;
 use bls::min_pk::proof_of_possession::*;
 use rkyv::{Archive, Deserialize, Serialize};
 
+#[derive(Debug, PartialEq, Eq, Clone, serde::Serialize, serde::Deserialize)]
+pub enum State {
+    Inactive,
+    Ready,
+    AwaitEndReset,
+}
+
 #[derive(Archive, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[rkyv(
     compare(PartialEq),

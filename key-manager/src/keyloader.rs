@@ -1,6 +1,5 @@
-use std::fmt::format;
 use std::fs::File;
-use std::io::{Read, Result};
+use std::io::{Read};
 use std::path::Path;
 use bls::min_pk::{SecretKey, PublicKey};
 
@@ -12,6 +11,16 @@ pub fn read_private_key(component_id: &str) -> SecretKey {
     let private_key = load_bls_secret_key(&private_key_path);
 
     private_key
+}
+
+pub fn read_public_key(component_id: &str) -> PublicKey {
+    // Construct the file path for the public key
+    let public_key_path = format!("keys/min_pk/{}.public.key", component_id);
+
+    // Load the public key from the file
+    let public_key = load_bls_public_key(&public_key_path);
+
+    public_key
 }
 
 pub fn read_mc_public_keys(num_mc_keys:u32) -> Vec<PublicKey> {

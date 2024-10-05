@@ -28,7 +28,34 @@ message Response {
     string message = 1;
 }
 
+message Signature {
+    bytes value = 1; // Assuming Signature is a byte array
+}
+
+message PublicKey {
+    bytes value = 1; // Assuming PublicKey is a byte array
+}
+
+message PublicKeyList {
+    repeated PublicKey public_keys = 1;
+}
+
+message CommitRecord {
+    uint64 reset_id = 1;
+    uint64 slot_id = 2;
+    bytes txroot = 3;
+    bytes prev = 4;
+    bool commit_flag = 5;
+    bool used_as_reset = 6;
+}
+
 message Start {
-    string content = 1;
-    string sender = 2;
+    map<uint64, PublicKey> satellite_slot_assignments = 1;
+    map<uint64, PublicKeyList> sending_station_slot_assignments = 2;
+    repeated PublicKey ground_station_public_keys = 3;
+    repeated PublicKey sending_station_public_keys = 4;
+    repeated PublicKey satellite_public_keys = 5;
+    uint64 t = 6;
+    uint32 f = 7;
+    CommitRecord genesis_record = 8;
 }

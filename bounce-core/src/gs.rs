@@ -1,37 +1,55 @@
 use tonic::{transport::Server, Request, Response, Status};
 use communication::{gs_service_server::{GsService, GsServiceServer}, Start, Response as GrpcResponse};
-use bounce_core::types::{ArchivedSignMerkleTreeRequest, SignMerkleTreeRequest};
+use bounce_core::types::{ArchivedSignMerkleTreeRequest};
 use bounce_core::common::*;
 use bounce_core::config::Config;
-use rkyv::{rancor};
 use tokio::runtime::Runtime;
 use std::env;
 
 use std::net::{SocketAddr};
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::RwLock;
 use tokio::task;
-
+use bls::min_pk::{PublicKey, SecretKey};
+use key_manager::keyloader;
 
 pub mod communication {
     tonic::include_proto!("communication");
 }
 
-#[derive(Default)]
 pub struct GS {
     config: Config,
+
+    secret_key: SecretKey,
+
+    // Public keys of other Ground Stations and this one.
+    ground_station_public_keys: Vec<PublicKey>,
+    sending_station_public_keys: Vec<PublicKey>,
+    satellite_public_keys: Vec<PublicKey>,
+    mission_control_public_keys: Vec<PublicKey>,
+    f: u32,
+    mc_limit: f32, // The fraction of Mission Control signatures required to accept a message. Default is 0.7.
+}
+
+pub struct GSLockService {
+    gs: Arc<RwLock<GS>>,
 }
 
 #[tonic::async_trait]
-impl GsService for GS {
+impl GsService for GSLockService {
     async fn handle_start(
         &self,
         start: Request<Start>,
     ) -> Result<Response<GrpcResponse>, Status> {
-        println!("GS received a message from {}: {:?}", start.get_ref().sender, start.get_ref().content);
+        println!("GS received a Start message from MC with t: {}", start.get_ref().t);
+        let mut gs = self.gs.write().await;
+
+        gs.start(start.into_inner());
 
         let reply = GrpcResponse {
-            message: format!("GS processed the message: {}", start.get_ref().content),
+            message: "GS processed the start message".to_string(),
         };
 
         Ok(Response::new(reply))
@@ -40,16 +58,31 @@ impl GsService for GS {
 }
 
 impl GS {
-    pub fn default() -> Self {
+
+    pub fn new(config: Config, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>) -> Self {
         GS {
-            config: Config::default(),
+            config,
+            secret_key,
+            ground_station_public_keys: Vec::new(),
+            sending_station_public_keys: Vec::new(),
+            satellite_public_keys: Vec::new(),
+            mission_control_public_keys,
+            f: 0,
+            mc_limit: 0.7,
         }
     }
 
-    pub fn new(config: Config) -> Self {
-        GS {
-            config,
-        }
+    pub fn start(&mut self, start: Start) {
+        log::info!(
+            "Received start message with {} number of ground stations",
+            start.ground_station_public_keys.len()
+        );
+        self.ground_station_public_keys = start.ground_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
+        self.sending_station_public_keys = start.sending_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
+        self.satellite_public_keys = start.satellite_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
+        self.f = start.f;
+
+        println!("GS started with f: {}", self.f);
     }
 }
 
@@ -96,7 +129,7 @@ pub async fn handle_connection<'a>(mut socket: TcpStream, ss_ips:Vec<String>) ->
     Ok(())
 }
 
-pub async fn run_listener<'a>(addr: SocketAddr, ss_ips: Vec<String>) {
+pub async fn run_listener(addr: SocketAddr, ss_ips: Vec<String>) {
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
     println!("Server listening on {}", addr);
 
@@ -122,7 +155,11 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let config = Config::load_from_file(config_file);
     let gs_ip = &config.gs[index].ip;
     let addr = format!("{}:37129", gs_ip).parse()?;
-    let gs = GS::new(config.clone());
+
+    let secret_key = keyloader::read_private_key(format!("gs{:02}", index).as_str());
+    let mission_control_public_keys = keyloader::read_mc_public_keys(config.mc.num_keys);
+
+    let gs = GS::new(config.clone(), secret_key, mission_control_public_keys);
 
     println!("GS is listening on {}", addr);
 
@@ -130,7 +167,7 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let ports = vec![3100];
     let mut tasks = vec![];
 
-    // Start a listener on each port
+    // Start a ss listener on each port
     let ss_ips = config.ss.iter().map(|ss| ss.ip.clone()).collect::<Vec<String>>();
     for port in ports {
         let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
@@ -138,7 +175,9 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     }
 
     Server::builder()
-        .add_service(GsServiceServer::new(gs))
+        .add_service(GsServiceServer::new(GSLockService {
+            gs: Arc::new(RwLock::new(gs)),
+        }))
         .serve(addr)
         .await?;
 
