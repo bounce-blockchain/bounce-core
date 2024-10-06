@@ -1,23 +1,24 @@
-use serde;
-
+use serde::{Deserialize, Serialize};
+use keccak_hash::write_keccak;
+use rs_merkle::Hasher;
 use bls::min_pk::proof_of_possession::*;
-use rkyv::{Archive, Deserialize, Serialize};
+use rkyv;
 
-#[derive(Debug, PartialEq, Eq, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum State {
     Inactive,
     Ready,
     AwaitEndReset,
 }
 
-#[derive(Archive, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(rkyv::Archive, Clone, Debug, rkyv::Serialize, rkyv::Deserialize, PartialEq, Eq)]
 #[rkyv(
     compare(PartialEq),
     derive(Debug),
 )]
 pub struct Transaction(pub Vec<u8>);
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct TxInner {
     pub from: PublicKey,
     pub to: PublicKey,
@@ -51,7 +52,7 @@ impl AsRef<[u8]> for Transaction {
     }
 }
 
-#[derive(Archive, Deserialize, Serialize, Debug, PartialEq, Eq)]
+#[derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize, Debug, PartialEq, Eq)]
 #[rkyv(
 // This will generate a PartialEq impl between our unarchived
 // and archived types
@@ -63,6 +64,19 @@ pub struct SignMerkleTreeRequest {
     pub root: [u8; 32],
     pub hashes: Vec<[u8; 32]>,
     pub txs: Vec<Transaction>,
+}
+
+#[derive(Clone,Serialize,Deserialize,Debug)]
+pub struct Keccak256 {}
+
+impl Hasher for Keccak256 {
+    type Hash = [u8; 32];
+
+    fn hash(data: &[u8]) -> [u8; 32] {
+        let mut output = [0u8; 32];
+        write_keccak(data, &mut output);
+        output
+    }
 }
 
 #[cfg(test)]

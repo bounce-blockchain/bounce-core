@@ -15,8 +15,9 @@ prost = "0.13.3"
 toml = "0.8.19"
 keccak-hash = { workspace = true }
 rand = { workspace = true }
-rayon = "1.8.0"
+rayon = { workspace = true }
 rkyv = { workspace = true }
+rs_merkle = {workspace = true}
 log = { workspace = true }
 
 [build-dependencies]

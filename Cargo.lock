@@ -304,6 +304,7 @@ dependencies = [
  "rand",
  "rayon",
  "rkyv",
+ "rs_merkle",
  "serde",
  "tokio",
  "toml",
@@ -1181,6 +1182,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78b3ae25bc7c8c38cec158d1f2757ee79e9b3740fbc7ccf0e59e4b08d793fa89"
 
 [[package]]
+name = "local-timming-tests"
+version = "0.1.0"
+dependencies = [
+ "bls",
+ "bounce-core",
+ "keccak-hash",
+ "rand",
+ "rayon",
+ "rs_merkle",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1810,6 +1823,15 @@ dependencies = [
  "bitflags",
  "serde",
  "serde_derive",
+]
+
+[[package]]
+name = "rs_merkle"
+version = "1.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b241d2e59b74ef9e98d94c78c47623d04c8392abaf82014dfd372a16041128f"
+dependencies = [
+ "sha2",
 ]
 
 [[package]]
