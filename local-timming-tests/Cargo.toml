@@ -1,0 +1,16 @@
+[package]
+name = "local-timming-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bls = { path = "../bls", features = ["proptest"] }
+bounce-core = { path = "../bounce-core" }
+keccak-hash = { workspace = true }
+rand = { workspace = true }
+rayon = { workspace = true }
+rs_merkle = {workspace = true}
+
+[[bin]]
+name = "mktconstruct"
+path = "src/mktconstruct.rs"
