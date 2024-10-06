@@ -140,38 +140,44 @@ impl SS {
             txs: self.transactions.clone(),
             hashes: self.tx_hashes.clone(),
         };
-        let gs_ip = &self.config.gs[0].ip;
-        let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
-        println!("Spawning process to send sign_merkle_tree_request to {}", addr);
-        tokio::spawn(async move {
-            match TcpStream::connect(&addr).await {
-                Ok(mut stream) => {
-                    println!("Connected to {}", addr);
-                    let serialized_data= rkyv::to_bytes::<Error>(&sign_merkle_tree_request).unwrap();
+        let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
+        let mut futures = Vec::new();
+        for gs_ip in gs_ips {
+            let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
+            println!("Spawning process to send sign_merkle_tree_request to {}", addr);
+            let sign_merkle_tree_request = sign_merkle_tree_request.clone();
+            let future = tokio::spawn(async move {
+                match TcpStream::connect(&addr).await {
+                    Ok(mut stream) => {
+                        println!("Connected to {}", addr);
+                        let serialized_data= rkyv::to_bytes::<Error>(&sign_merkle_tree_request).unwrap();
 
-                    // Measure the time taken to send data
-                    let start = std::time::Instant::now();
-                    println!("Sending sign_merkle_tree_request...");
+                        output_current_time("Sending sign_merkle_tree_request...");
 
-                    // Send the serialized data
-                    if let Err(e) = stream.write_all(&serialized_data).await {
-                        eprintln!("Failed to send sign_merkle_tree_request: {:?}", e);
-                        return;
+                        // Send the serialized data
+                        if let Err(e) = stream.write_all(&serialized_data).await {
+                            eprintln!("Failed to send sign_merkle_tree_request: {:?}", e);
+                            return;
+                        }
+
+                        // Drop the stream to close the connection
+                        drop(stream);
                     }
-
-                    // Drop the stream to close the connection
-                    drop(stream);
-
-                    // Calculate elapsed time
-                    let elapsed = start.elapsed();
-                    output_current_time(&format!("sign_merkle_tree_request sent. Time elapsed: {:?}", elapsed))
-
+                    Err(e) => {
+                        eprintln!("Failed to connect to {}: {:?}", addr, e);
+                    }
                 }
-                Err(e) => {
-                    eprintln!("Failed to connect to {}: {:?}", addr, e);
-                }
-            }
-        }).await.unwrap();
+            });
+            futures.push(future);
+        }
+
+        for future in futures {
+            // Measure the time taken to send data
+            let start = std::time::Instant::now();
+            future.await.expect("Failed to send sign_merkle_tree_request");
+            let elapsed = start.elapsed();
+            output_current_time(&format!("sign_merkle_tree_request sent. Time elapsed: {:?}", elapsed));
+        }
 
         Ok(())
     }
