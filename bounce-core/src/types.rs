@@ -52,7 +52,7 @@ impl AsRef<[u8]> for Transaction {
     }
 }
 
-#[derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize, Debug, PartialEq, Eq)]
+#[derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize, Debug, PartialEq, Eq, Clone)]
 #[rkyv(
 // This will generate a PartialEq impl between our unarchived
 // and archived types

@@ -120,11 +120,11 @@ pub async fn handle_connection<'a>(mut socket: TcpStream, ss_ips:Vec<String>) ->
 
     output_current_time("Received sign_merkle_tree_request");
 
-    let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss_ips[0])).await?;
-    let response = tonic::Request::new(GrpcResponse {
-        message: "SignMerkleTreeResponse".into(),
-    });
-    client.handle_sign_merkle_tree_response(response).await?;
+    // let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss_ips[0])).await?;
+    // let response = tonic::Request::new(GrpcResponse {
+    //     message: "SignMerkleTreeResponse".into(),
+    // });
+    // client.handle_sign_merkle_tree_response(response).await?;
 
     Ok(())
 }
@@ -153,8 +153,7 @@ pub async fn run_listener(addr: SocketAddr, ss_ips: Vec<String>) {
 
 pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::load_from_file(config_file);
-    let gs_ip = &config.gs[index].ip;
-    let addr = format!("{}:37129", gs_ip).parse()?;
+    let addr = "0.0.0.0:37129".to_string().parse()?;
 
     let secret_key = keyloader::read_private_key(format!("gs{:02}", index).as_str());
     let mission_control_public_keys = keyloader::read_mc_public_keys(config.mc.num_keys);
