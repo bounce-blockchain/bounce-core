@@ -1,9 +1,14 @@
 use std::collections::{BTreeMap, HashSet};
-use tonic::{transport::Server, Request, Response, Status};
+use std::env;
+use std::sync::Arc;
 use communication::{ss_service_server::{SsService, SsServiceServer}, Start, Response as GrpcResponse};
 use bounce_core::types::{Transaction, SignMerkleTreeRequest, State};
 use bounce_core::config::Config;
+use bounce_core::common::*;
+use bounce_core::{ResetId, SlotId};
+use bls::min_pk::{PublicKey, SecretKey};
 use keccak_hash::keccak;
+use key_manager::keyloader;
 use rayon::prelude::*;
 use rkyv::{rancor::Error};
 use rand::Rng;
@@ -12,14 +17,10 @@ use rand::Rng;
 use std::net::{SocketAddr};
 use tokio::io::{AsyncWriteExt};
 use tokio::net::{TcpStream};
-use bounce_core::common::*;
 use tokio::runtime::Runtime;
-use std::env;
-use std::sync::Arc;
 use tokio::sync::RwLock;
-use bls::min_pk::{PublicKey, SecretKey};
-use bounce_core::{ResetId, SlotId};
-use key_manager::keyloader;
+use tokio::task::JoinSet;
+use tonic::{transport::Server, Request, Response, Status};
 
 pub mod communication {
     tonic::include_proto!("communication");
@@ -61,7 +62,10 @@ impl SsService for SSLockService {
 
         for i in 0..2 {
             println!("SS is sending sign_merkle_tree_request {}", i);
+            let start = std::time::Instant::now();
             ss.send_sign_merkle_tree_request().await.expect("Failed to send transactions");
+            let elapsed = start.elapsed();
+            println!("sign_merkle_tree_request {} sent. Total Time: {:?}", i, elapsed);
         }
 
         let reply = communication::Response {
@@ -74,7 +78,7 @@ impl SsService for SSLockService {
     async fn handle_sign_merkle_tree_response(
         &self,
         response: Request<GrpcResponse>,
-    ) -> Result<Response<GrpcResponse>, Status>{
+    ) -> Result<Response<GrpcResponse>, Status> {
         println!("SS received a sign_merkle_tree_response: {}", response.get_ref().message);
         output_current_time("");
 
@@ -141,16 +145,16 @@ impl SS {
             hashes: self.tx_hashes.clone(),
         };
         let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
-        let mut futures = Vec::new();
+        let mut join_set = JoinSet::new();
         for gs_ip in gs_ips {
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
             let sign_merkle_tree_request = sign_merkle_tree_request.clone();
-            let future = tokio::spawn(async move {
+            let future = join_set.spawn(async move {
                 match TcpStream::connect(&addr).await {
                     Ok(mut stream) => {
                         println!("Connected to {}", addr);
-                        let serialized_data= rkyv::to_bytes::<Error>(&sign_merkle_tree_request).unwrap();
+                        let serialized_data = rkyv::to_bytes::<Error>(&sign_merkle_tree_request).unwrap();
 
                         output_current_time("Sending sign_merkle_tree_request...");
 
@@ -168,16 +172,12 @@ impl SS {
                     }
                 }
             });
-            futures.push(future);
         }
 
-        for future in futures {
-            // Measure the time taken to send data
-            let start = std::time::Instant::now();
-            future.await.expect("Failed to send sign_merkle_tree_request");
-            let elapsed = start.elapsed();
-            output_current_time(&format!("sign_merkle_tree_request sent. Time elapsed: {:?}", elapsed));
-        }
+        let start = std::time::Instant::now();
+        join_set.join_all().await;
+        let elapsed = start.elapsed();
+        output_current_time(&format!("sign_merkle_tree_request sent. Time elapsed: {:?}", elapsed));
 
         Ok(())
     }
