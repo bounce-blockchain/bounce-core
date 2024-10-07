@@ -96,7 +96,7 @@ impl SsService for SSLockService {
         ss.start(start.into_inner());
 
         let mut durations = Vec::new();
-        for i in 0..10 {
+        for i in 0..20 {
             println!("SS is sending sign_merkle_tree_request {}", i);
             let start = std::time::Instant::now();
             let duration = ss.send_sign_merkle_tree_request().await.expect("Failed to send transactions");
