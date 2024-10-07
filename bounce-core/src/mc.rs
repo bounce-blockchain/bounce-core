@@ -145,8 +145,7 @@ impl McService for MC {
 
 pub async fn run_mc(config_file: &str) -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::load_from_file(config_file);
-    let mc_ip = &config.mc.ip;
-    let addr = format!("{}:37128", mc_ip).parse()?;
+    let addr = "0.0.0.0:37128".to_string().parse()?;
 
     let mut secret_keys = Vec::new();
     for i in 0..config.mc.num_keys {

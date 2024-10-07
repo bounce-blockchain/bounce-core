@@ -185,8 +185,7 @@ impl SS {
 
 pub async fn run_ss(config_file: &str, index: usize) -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::load_from_file(config_file);
-    let ss_ip = &config.ss[index].ip;
-    let addr = format!("{}:37130", ss_ip).parse()?;
+    let addr = "0.0.0.0:37130".to_string().parse()?;
 
     let secret_key = keyloader::read_private_key(format!("ss{:02}", index).as_str());
     let mission_control_public_keys = keyloader::read_mc_public_keys(config.mc.num_keys);
