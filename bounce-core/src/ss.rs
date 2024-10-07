@@ -96,6 +96,7 @@ impl SsService for SSLockService {
         ss.start(start.into_inner());
 
         let mut durations = Vec::new();
+        let mut total_times = Vec::new();
         for i in 0..20 {
             println!("SS is sending sign_merkle_tree_request {}", i);
             let start = std::time::Instant::now();
@@ -103,6 +104,7 @@ impl SsService for SSLockService {
             let elapsed = start.elapsed();
             println!("sign_merkle_tree_request {} sent. Total Time: {:?}", i, elapsed);
             durations.push(duration);
+            total_times.push(elapsed);
         }
 
         let avg = average_duration(&durations);
@@ -115,6 +117,18 @@ impl SsService for SSLockService {
         println!(
             "90% Confidence Interval: [{:?}, {:?}]",
             ci_lower, ci_upper
+        );
+
+        let total_avg = average_duration(&total_times);
+        println!("Total Average Duration: {:?}", total_avg);
+
+        let total_median = median_duration(total_times.clone());
+        println!("Total Median Duration: {:?}", total_median);
+
+        let (total_ci_lower, total_ci_upper) = confidence_interval_90(&mut total_times.clone());
+        println!(
+            "Total 90% Confidence Interval: [{:?}, {:?}]",
+            total_ci_lower, total_ci_upper
         );
 
         let reply = communication::Response {
@@ -199,7 +213,7 @@ impl SS {
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
             let sign_merkle_tree_request = sign_merkle_tree_request.clone();
-            let future = join_set.spawn(async move {
+            join_set.spawn(async move {
                 match TcpStream::connect(&addr).await {
                     Ok(mut stream) => {
                         println!("Connected to {}", addr);
