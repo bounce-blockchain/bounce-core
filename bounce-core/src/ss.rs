@@ -207,18 +207,20 @@ impl SS {
             txs: self.transactions.clone(),
             hashes: self.tx_hashes.clone(),
         };
+        let start = std::time::Instant::now();
+        let serialized_data = rkyv::to_bytes::<Error>(&sign_merkle_tree_request).unwrap();
+        let elapsed = start.elapsed();
+        println!("Serialized sign_merkle_tree_request in {:?}", elapsed);
         let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
         let mut join_set = JoinSet::new();
         for gs_ip in gs_ips {
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
-            let sign_merkle_tree_request = sign_merkle_tree_request.clone();
+            let serialized_data = serialized_data.clone();
             join_set.spawn(async move {
                 match TcpStream::connect(&addr).await {
                     Ok(mut stream) => {
                         println!("Connected to {}", addr);
-                        let serialized_data = rkyv::to_bytes::<Error>(&sign_merkle_tree_request).unwrap();
-
                         output_current_time("Sending sign_merkle_tree_request...");
 
                         // Send the serialized data
