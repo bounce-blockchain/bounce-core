@@ -51,6 +51,9 @@ fn confidence_interval_90(durations: &mut Vec<Duration>) -> (Duration, Duration)
     let len = durations.len();
     let lower_idx = (len as f64 * 0.05).round() as usize;
     let upper_idx = (len as f64 * 0.95).round() as usize;
+    if upper_idx == len {
+        return (durations[lower_idx], durations[upper_idx - 1]);
+    }
 
     let lower = durations[lower_idx];
     let upper = durations[upper_idx];
