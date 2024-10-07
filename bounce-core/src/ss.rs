@@ -15,6 +15,7 @@ use rand::Rng;
 //use rand::seq::SliceRandom;
 //use rand::thread_rng;
 use std::net::{SocketAddr};
+use std::time::Duration;
 use tokio::io::{AsyncWriteExt};
 use tokio::net::{TcpStream};
 use tokio::runtime::Runtime;
@@ -24,6 +25,37 @@ use tonic::{transport::Server, Request, Response, Status};
 
 pub mod communication {
     tonic::include_proto!("communication");
+}
+
+fn average_duration(durations: &[Duration]) -> Duration {
+    let total: Duration = durations.iter().sum();
+    total / (durations.len() as u32)
+}
+
+fn median_duration(mut durations: Vec<Duration>) -> Duration {
+    durations.sort();
+    let mid = durations.len() / 2;
+
+    if durations.len() % 2 == 0 {
+        let a = durations[mid - 1];
+        let b = durations[mid];
+        (a + b) / 2
+    } else {
+        durations[mid]
+    }
+}
+
+fn confidence_interval_90(durations: &mut Vec<Duration>) -> (Duration, Duration) {
+    durations.sort();
+
+    let len = durations.len();
+    let lower_idx = (len as f64 * 0.05).round() as usize;
+    let upper_idx = (len as f64 * 0.95).round() as usize;
+
+    let lower = durations[lower_idx];
+    let upper = durations[upper_idx];
+
+    (lower, upper)
 }
 
 pub struct SS {
@@ -60,13 +92,27 @@ impl SsService for SSLockService {
 
         ss.start(start.into_inner());
 
-        for i in 0..2 {
+        let mut durations = Vec::new();
+        for i in 0..10 {
             println!("SS is sending sign_merkle_tree_request {}", i);
             let start = std::time::Instant::now();
-            ss.send_sign_merkle_tree_request().await.expect("Failed to send transactions");
+            let duration = ss.send_sign_merkle_tree_request().await.expect("Failed to send transactions");
             let elapsed = start.elapsed();
             println!("sign_merkle_tree_request {} sent. Total Time: {:?}", i, elapsed);
+            durations.push(duration);
         }
+
+        let avg = average_duration(&durations);
+        println!("Average Duration: {:?}", avg);
+
+        let median = median_duration(durations.clone());
+        println!("Median Duration: {:?}", median);
+
+        let (ci_lower, ci_upper) = confidence_interval_90(&mut durations.clone());
+        println!(
+            "90% Confidence Interval: [{:?}, {:?}]",
+            ci_lower, ci_upper
+        );
 
         let reply = communication::Response {
             message: "SS processed the start message".to_string(),
@@ -138,7 +184,7 @@ impl SS {
         println!("SS started with f: {}", self.f);
     }
 
-    pub async fn send_sign_merkle_tree_request(&self) -> std::io::Result<()> {
+    pub async fn send_sign_merkle_tree_request(&self) -> std::io::Result<Duration> {
         let sign_merkle_tree_request = SignMerkleTreeRequest {
             root: <[u8; 32]>::try_from(vec![0u8; 32]).unwrap(),
             txs: self.transactions.clone(),
@@ -179,7 +225,7 @@ impl SS {
         let elapsed = start.elapsed();
         output_current_time(&format!("sign_merkle_tree_request sent. Time elapsed: {:?}", elapsed));
 
-        Ok(())
+        Ok(elapsed)
     }
 }
 
