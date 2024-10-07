@@ -247,7 +247,7 @@ pub async fn run_ss(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let mut data = [0u8; 256];
     rng.fill(&mut data);
     let data = data.to_vec();
-    for i in 0..100000 {
+    for i in 0..1000000 {
         let tx = Transaction::new(
             PublicKey::default(),
             PublicKey::default(),
