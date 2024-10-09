@@ -218,27 +218,16 @@ impl SS {
         let elapsed = start.elapsed();
         println!("Serialized sign_merkle_tree_request in {:?}", elapsed);
 
-        let start = std::time::Instant::now();
         let sharable_data = Arc::new(serialized_data);
-        let elapsed = start.elapsed();
-        println!("Created sharable_data in {:?}", elapsed);
 
-        let start = std::time::Instant::now();
         let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
-        let elapsed = start.elapsed();
-        println!("Cloned gs_ips in {:?}", elapsed);
-
-        let start = std::time::Instant::now();
         let mut join_set = JoinSet::new();
-        let elapsed = start.elapsed();
-        println!("Created join_set in {:?}", elapsed);
 
         let start = std::time::Instant::now();
         for gs_ip in gs_ips {
+            let sharable_data = Arc::clone(&sharable_data);
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
-            let sharable_data = Arc::clone(&sharable_data);
-            println!("Cloned sign_merkle_tree_request in {:?}", elapsed);
             join_set.spawn(async move {
                 let start = std::time::Instant::now();
                 match TcpStream::connect(&addr).await {
@@ -248,13 +237,10 @@ impl SS {
                         output_current_time("Sending sign_merkle_tree_request...");
 
                         // Send the serialized data
-                        let start = std::time::Instant::now();
                         if let Err(e) = stream.write_all(&sharable_data).await {
                             eprintln!("Failed to send sign_merkle_tree_request: {:?}", e);
                             return;
                         }
-                        let elapsed = start.elapsed();
-                        println!("sign_merkle_tree_request sent. Time elapsed: {:?}", elapsed);
 
                         // Drop the stream to close the connection
                         drop(stream);
