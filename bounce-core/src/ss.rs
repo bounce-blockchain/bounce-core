@@ -97,7 +97,7 @@ impl SsService for SSLockService {
 
         let mut durations = Vec::new();
         let mut total_times = Vec::new();
-        for i in 0..20 {
+        for i in 0..2 {
             println!("SS is sending sign_merkle_tree_request {}", i);
             let start = std::time::Instant::now();
             let duration = ss.send_sign_merkle_tree_request().await.expect("Failed to send transactions");
@@ -213,21 +213,30 @@ impl SS {
         println!("Serialized sign_merkle_tree_request in {:?}", elapsed);
         let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
         let mut join_set = JoinSet::new();
+        let start = std::time::Instant::now();
         for gs_ip in gs_ips {
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
+            let start = std::time::Instant::now();
             let serialized_data = serialized_data.clone();
+            let elapsed = start.elapsed();
+            println!("Cloned sign_merkle_tree_request in {:?}", elapsed);
             join_set.spawn(async move {
+                let start = std::time::Instant::now();
                 match TcpStream::connect(&addr).await {
                     Ok(mut stream) => {
-                        println!("Connected to {}", addr);
+                        let elapsed = start.elapsed();
+                        println!("Connected to {} in {:?}", addr, elapsed);
                         output_current_time("Sending sign_merkle_tree_request...");
 
                         // Send the serialized data
+                        let start = std::time::Instant::now();
                         if let Err(e) = stream.write_all(&serialized_data).await {
                             eprintln!("Failed to send sign_merkle_tree_request: {:?}", e);
                             return;
                         }
+                        let elapsed = start.elapsed();
+                        println!("sign_merkle_tree_request sent. Time elapsed: {:?}", elapsed);
 
                         // Drop the stream to close the connection
                         drop(stream);
@@ -238,6 +247,8 @@ impl SS {
                 }
             });
         }
+        let elapsed = start.elapsed();
+        println!("Spawned all processes in {:?}", elapsed);
 
         let start = std::time::Instant::now();
         join_set.join_all().await;

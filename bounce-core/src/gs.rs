@@ -91,6 +91,7 @@ pub async fn handle_connection<'a>(mut socket: TcpStream, ss_ips:Vec<String>) ->
     let mut buffer = Vec::new();
     let mut chunk = vec![0u8; 2*1024*1024]; // Read in 2 MB chunks
 
+    let start = std::time::Instant::now();
     loop {
         // Read data into the chunk
         let bytes_read = match socket.read(&mut chunk).await {
@@ -108,6 +109,8 @@ pub async fn handle_connection<'a>(mut socket: TcpStream, ss_ips:Vec<String>) ->
         // Append the read data to the buffer
         buffer.extend_from_slice(&chunk[..bytes_read]);
     }
+    let elapsed_time = start.elapsed();
+    println!("Received {} bytes in {:.2?}", buffer.len(), elapsed_time);
 
     output_current_time(&format!("Received {} bytes from a client", buffer.len()));
 
