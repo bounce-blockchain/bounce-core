@@ -18,7 +18,7 @@ use std::net::{SocketAddr};
 use std::time::Duration;
 use tokio::io::{AsyncWriteExt};
 use tokio::net::{TcpStream};
-use tokio::runtime::Runtime;
+use tokio::runtime::{Builder, Runtime};
 use tokio::sync::RwLock;
 use tonic::{transport::Server, Request, Response, Status};
 
@@ -222,12 +222,17 @@ impl SS {
         let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
 
         let start = std::time::Instant::now();
+        let runtime = Builder::new_multi_thread()
+            .worker_threads(gs_ips.len())
+            .thread_name("mk-request-sender")
+            .build()
+            .unwrap();
         let mut handles = vec![];
         for gs_ip in gs_ips {
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
             let sharable_data = Arc::clone(&sharable_data);
-            let handle = tokio::spawn(async move {
+            let handle = runtime.spawn(async move {
                 let start = std::time::Instant::now();
                 match TcpStream::connect(&addr).await {
                     Ok(mut stream) => {
