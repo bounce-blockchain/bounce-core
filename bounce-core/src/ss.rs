@@ -317,10 +317,8 @@ pub async fn run_ss(config_file: &str, index: usize, mk_sender_handle:&Handle) -
 }
 
 fn main() {
-    // Create a new Tokio runtime
     let rt = Runtime::new().unwrap();
 
-    // Load the configuration file from command-line arguments
     let args: Vec<String> = env::args().collect();
     let config_file = &args[1];
     let index = args[2].parse::<usize>().expect("Index should be a valid number");
@@ -332,6 +330,5 @@ fn main() {
         .build()
         .unwrap();
 
-    // Start the SS component
     rt.block_on(run_ss(config_file, index, mk_sender_runtime.handle())).unwrap();
 }
