@@ -20,7 +20,6 @@ use tokio::io::{AsyncWriteExt};
 use tokio::net::{TcpStream};
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
-use tokio::task::JoinSet;
 use tonic::{transport::Server, Request, Response, Status};
 
 pub mod communication {
@@ -221,14 +220,14 @@ impl SS {
         let sharable_data = Arc::new(serialized_data);
 
         let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
-        let mut join_set = JoinSet::new();
 
         let start = std::time::Instant::now();
+        let mut handles = vec![];
         for gs_ip in gs_ips {
-            let sharable_data = Arc::clone(&sharable_data);
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
-            join_set.spawn(async move {
+            let sharable_data = Arc::clone(&sharable_data);
+            let handle = tokio::spawn(async move {
                 let start = std::time::Instant::now();
                 match TcpStream::connect(&addr).await {
                     Ok(mut stream) => {
@@ -253,12 +252,15 @@ impl SS {
                     }
                 }
             });
+            handles.push(handle);
         }
         let elapsed = start.elapsed();
         println!("Spawned all workers in {:?}", elapsed);
 
         let start = std::time::Instant::now();
-        join_set.join_all().await;
+        for handle in handles {
+            handle.await.unwrap();
+        }
         let elapsed = start.elapsed();
         output_current_time(&format!("sign_merkle_tree_request sent. Time elapsed: {:?}", elapsed));
 
