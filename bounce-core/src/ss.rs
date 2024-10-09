@@ -211,7 +211,11 @@ impl SS {
         let elapsed = start.elapsed();
         println!("Created sign_merkle_tree_request in {:?}", elapsed);
         let start = std::time::Instant::now();
-        let serialized_data = rkyv::to_bytes::<Error>(&sign_merkle_tree_request).unwrap();
+        use rkyv::{api::high::to_bytes_with_alloc, ser::allocator::Arena};
+        let mut arena = Arena::new();
+        let serialized_data =
+            to_bytes_with_alloc::<_, Error>(&sign_merkle_tree_request, arena.acquire()).unwrap();
+        //let serialized_data = rkyv::to_bytes::<Error>(&sign_merkle_tree_request).unwrap();
         let elapsed = start.elapsed();
         println!("Serialized sign_merkle_tree_request in {:?}", elapsed);
         let sharable_data = Arc::new(serialized_data);
