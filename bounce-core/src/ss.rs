@@ -18,8 +18,9 @@ use std::net::{SocketAddr};
 use std::time::Duration;
 use tokio::io::{AsyncWriteExt};
 use tokio::net::{TcpStream};
-use tokio::runtime::{Builder, Handle, Runtime};
+use tokio::runtime::{Runtime};
 use tokio::sync::RwLock;
+use tokio::task::JoinSet;
 use tonic::{transport::Server, Request, Response, Status};
 
 pub mod communication {
@@ -63,8 +64,6 @@ fn confidence_interval_90(durations: &mut Vec<Duration>) -> (Duration, Duration)
 pub struct SS {
     config: Config,
     gs_tx_receiver_ports: Vec<u16>,
-
-    mk_sender_handle: Handle,
 
     secret_key: SecretKey,
     state: State,
@@ -165,11 +164,10 @@ impl SsService for SSLockService {
 }
 
 impl SS {
-    pub fn new(config: Config, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>, mk_sender_handle:Handle) -> Self {
+    pub fn new(config: Config, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>) -> Self {
         SS {
             config,
             secret_key,
-            mk_sender_handle,
             ground_station_public_keys: vec![],
             mission_control_public_keys,
             f: 0,
@@ -224,12 +222,12 @@ impl SS {
 
         let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
 
-        let mut handles = vec![];
+        let mut join_set = JoinSet::new();
         for gs_ip in gs_ips {
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
             let sharable_data = Arc::clone(&sharable_data);
-            let handle = self.mk_sender_handle.spawn(async move {
+            join_set.spawn(async move {
                 let start = std::time::Instant::now();
                 match TcpStream::connect(&addr).await {
                     Ok(mut stream) => {
@@ -254,15 +252,12 @@ impl SS {
                     }
                 }
             });
-            handles.push(handle);
         }
         let elapsed = start.elapsed();
         println!("Spawned all workers in {:?}", elapsed);
 
         let start = std::time::Instant::now();
-        for handle in handles {
-            handle.await.unwrap();
-        }
+        join_set.join_all().await;
         let elapsed = start.elapsed();
         output_current_time(&format!("sign_merkle_tree_request sent. Time elapsed: {:?}", elapsed));
 
@@ -273,14 +268,14 @@ impl SS {
     }
 }
 
-pub async fn run_ss(config_file: &str, index: usize, mk_sender_handle:&Handle) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_ss(config_file: &str, index: usize) -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::load_from_file(config_file);
     let addr = "0.0.0.0:37130".to_string().parse()?;
 
     let secret_key = keyloader::read_private_key(format!("ss{:02}", index).as_str());
     let mission_control_public_keys = keyloader::read_mc_public_keys(config.mc.num_keys);
 
-    let mut ss = SS::new(config, secret_key, mission_control_public_keys,mk_sender_handle.clone());
+    let mut ss = SS::new(config, secret_key, mission_control_public_keys);
 
     println!("SS is generating transactions");
     //generate 1million transactions
@@ -323,12 +318,5 @@ fn main() {
     let config_file = &args[1];
     let index = args[2].parse::<usize>().expect("Index should be a valid number");
 
-    let mk_sender_runtime = Builder::new_multi_thread()
-        .worker_threads(16)
-        .enable_io()
-        .thread_name("mk-request-sender")
-        .build()
-        .unwrap();
-
-    rt.block_on(run_ss(config_file, index, mk_sender_runtime.handle())).unwrap();
+    rt.block_on(run_ss(config_file, index)).unwrap();
 }
