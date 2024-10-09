@@ -237,10 +237,13 @@ impl SS {
                         output_current_time("Sending sign_merkle_tree_request...");
 
                         // Send the serialized data
+                        let start = std::time::Instant::now();
                         if let Err(e) = stream.write_all(&sharable_data).await {
                             eprintln!("Failed to send sign_merkle_tree_request: {:?}", e);
                             return;
                         }
+                        let elapsed = start.elapsed();
+                        println!("Thread sent sign_merkle_tree_request in {:?}", elapsed);
 
                         // Drop the stream to close the connection
                         drop(stream);
@@ -252,7 +255,7 @@ impl SS {
             });
         }
         let elapsed = start.elapsed();
-        println!("Spawned all processes in {:?}", elapsed);
+        println!("Spawned all workers in {:?}", elapsed);
 
         let start = std::time::Instant::now();
         join_set.join_all().await;
