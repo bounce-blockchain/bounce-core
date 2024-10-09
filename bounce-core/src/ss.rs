@@ -202,15 +202,19 @@ impl SS {
     }
 
     pub async fn send_sign_merkle_tree_request(&self) -> std::io::Result<Duration> {
+        let start = std::time::Instant::now();
         let sign_merkle_tree_request = SignMerkleTreeRequest {
             root: <[u8; 32]>::try_from(vec![0u8; 32]).unwrap(),
             txs: self.transactions.clone(),
             hashes: self.tx_hashes.clone(),
         };
+        let elapsed = start.elapsed();
+        println!("Created sign_merkle_tree_request in {:?}", elapsed);
         let start = std::time::Instant::now();
         let serialized_data = rkyv::to_bytes::<Error>(&sign_merkle_tree_request).unwrap();
         let elapsed = start.elapsed();
         println!("Serialized sign_merkle_tree_request in {:?}", elapsed);
+        let sharable_data = Arc::new(serialized_data);
         let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
         let mut join_set = JoinSet::new();
         let start = std::time::Instant::now();
@@ -218,7 +222,7 @@ impl SS {
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
             let start = std::time::Instant::now();
-            let serialized_data = serialized_data.clone();
+            let sharable_data = Arc::clone(&sharable_data);
             let elapsed = start.elapsed();
             println!("Cloned sign_merkle_tree_request in {:?}", elapsed);
             join_set.spawn(async move {
@@ -231,7 +235,7 @@ impl SS {
 
                         // Send the serialized data
                         let start = std::time::Instant::now();
-                        if let Err(e) = stream.write_all(&serialized_data).await {
+                        if let Err(e) = stream.write_all(&sharable_data).await {
                             eprintln!("Failed to send sign_merkle_tree_request: {:?}", e);
                             return;
                         }
