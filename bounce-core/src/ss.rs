@@ -95,12 +95,22 @@ impl SsService for SSLockService {
 
         ss.start(start.into_inner());
 
+        let start = std::time::Instant::now();
+        let sign_merkle_tree_request = SignMerkleTreeRequest {
+            root: <[u8; 32]>::try_from(vec![0u8; 32]).unwrap(),
+            txs: std::mem::take(&mut ss.transactions),
+            hashes: std::mem::take(&mut ss.tx_hashes),
+        };
+        let elapsed = start.elapsed();
+        println!("Created sign_merkle_tree_request in {:?}", elapsed);
+
+
         let mut durations = Vec::new();
         let mut total_times = Vec::new();
-        for i in 0..2 {
+        for i in 0..20 {
             println!("SS is sending sign_merkle_tree_request {}", i);
             let start = std::time::Instant::now();
-            let duration = ss.send_sign_merkle_tree_request().await.expect("Failed to send transactions");
+            let duration = ss.send_sign_merkle_tree_request(&sign_merkle_tree_request).await.expect("Failed to send transactions");
             let elapsed = start.elapsed();
             println!("sign_merkle_tree_request {} sent. Total Time: {:?}", i, elapsed);
             durations.push(duration);
@@ -201,33 +211,33 @@ impl SS {
         println!("SS started with f: {}", self.f);
     }
 
-    pub async fn send_sign_merkle_tree_request(&self) -> std::io::Result<Duration> {
+    pub async fn send_sign_merkle_tree_request(&self, sign_merkle_tree_request:&SignMerkleTreeRequest) -> std::io::Result<Duration> {
+        let first_start = std::time::Instant::now();
         let start = std::time::Instant::now();
-        let sign_merkle_tree_request = SignMerkleTreeRequest {
-            root: <[u8; 32]>::try_from(vec![0u8; 32]).unwrap(),
-            txs: self.transactions.clone(),
-            hashes: self.tx_hashes.clone(),
-        };
-        let elapsed = start.elapsed();
-        println!("Created sign_merkle_tree_request in {:?}", elapsed);
-        let start = std::time::Instant::now();
-        use rkyv::{api::high::to_bytes_with_alloc, ser::allocator::Arena};
-        let mut arena = Arena::new();
-        let serialized_data =
-            to_bytes_with_alloc::<_, Error>(&sign_merkle_tree_request, arena.acquire()).unwrap();
-        //let serialized_data = rkyv::to_bytes::<Error>(&sign_merkle_tree_request).unwrap();
+        let serialized_data = rkyv::to_bytes::<Error>(sign_merkle_tree_request).unwrap();
         let elapsed = start.elapsed();
         println!("Serialized sign_merkle_tree_request in {:?}", elapsed);
+
+        let start = std::time::Instant::now();
         let sharable_data = Arc::new(serialized_data);
+        let elapsed = start.elapsed();
+        println!("Created sharable_data in {:?}", elapsed);
+
+        let start = std::time::Instant::now();
         let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
+        let elapsed = start.elapsed();
+        println!("Cloned gs_ips in {:?}", elapsed);
+
+        let start = std::time::Instant::now();
         let mut join_set = JoinSet::new();
+        let elapsed = start.elapsed();
+        println!("Created join_set in {:?}", elapsed);
+
         let start = std::time::Instant::now();
         for gs_ip in gs_ips {
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
-            let start = std::time::Instant::now();
             let sharable_data = Arc::clone(&sharable_data);
-            let elapsed = start.elapsed();
             println!("Cloned sign_merkle_tree_request in {:?}", elapsed);
             join_set.spawn(async move {
                 let start = std::time::Instant::now();
@@ -262,6 +272,9 @@ impl SS {
         join_set.join_all().await;
         let elapsed = start.elapsed();
         output_current_time(&format!("sign_merkle_tree_request sent. Time elapsed: {:?}", elapsed));
+
+        let last_elapsed = first_start.elapsed();
+        println!("Total time elapsed in method: {:?}", last_elapsed);
 
         Ok(elapsed)
     }
