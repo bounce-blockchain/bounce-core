@@ -279,16 +279,16 @@ pub async fn run_ss(config_file: &str, index: usize) -> Result<(), Box<dyn std::
 
     println!("SS is generating transactions");
     //generate 1million transactions
-    let mut rng = rand::thread_rng();
-    let mut data = [0u8; 256];
-    rng.fill(&mut data);
-    let data = data.to_vec();
     for i in 0..1_000_000 {
+        let mut rng = rand::thread_rng();
+        let mut data = [0u8; 256];
+        rng.fill(&mut data);
+        let data = data.to_vec();
         let tx = Transaction::new(
             PublicKey::default(),
             PublicKey::default(),
             i,
-            data.clone(),
+            data,
         );
         ss.add_transaction(tx);
     }
