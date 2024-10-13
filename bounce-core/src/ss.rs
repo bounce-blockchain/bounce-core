@@ -237,6 +237,7 @@ impl SS {
         let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
 
         let mut join_set = JoinSet::new();
+        let start = std::time::Instant::now();
         for gs_ip in gs_ips {
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
