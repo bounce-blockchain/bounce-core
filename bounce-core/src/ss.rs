@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, HashSet};
 use std::env;
 use std::sync::Arc;
-use communication::{ss_service_server::{SsService, SsServiceServer}, Start, Response as GrpcResponse};
-use bounce_core::types::{Transaction, SignMerkleTreeRequest, State};
+use communication::{ss_service_server::{SsService, SsServiceServer}, Start, Response as GrpcResponse, SignMerkleTreeResponse};
+use bounce_core::types::{Transaction, SignMerkleTreeRequest, State, Keccak256};
 use bounce_core::config::Config;
 use bounce_core::common::*;
 use bounce_core::{ResetId, SlotId};
@@ -15,7 +15,8 @@ use rand::Rng;
 //use rand::seq::SliceRandom;
 //use rand::thread_rng;
 use std::net::{SocketAddr};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use rs_merkle::MerkleTree;
 use tokio::io::{AsyncWriteExt};
 use tokio::net::{TcpStream};
 use tokio::runtime::{Runtime};
@@ -78,6 +79,7 @@ pub struct SS {
 
     transactions: Vec<Transaction>,
     tx_hashes: Vec<[u8; 32]>,
+    root: [u8; 32],
 }
 
 pub struct SSLockService {
@@ -105,7 +107,7 @@ impl SsService for SSLockService {
 
         let mut durations = Vec::new();
         let mut total_times = Vec::new();
-        for i in 0..20 {
+        for i in 0..10 {
             println!("SS is sending sign_merkle_tree_request {}", i);
             let start = std::time::Instant::now();
             let duration = ss.send_sign_merkle_tree_request(&sign_merkle_tree_request).await.expect("Failed to send transactions");
@@ -148,10 +150,13 @@ impl SsService for SSLockService {
 
     async fn handle_sign_merkle_tree_response(
         &self,
-        response: Request<GrpcResponse>,
+        response: Request<SignMerkleTreeResponse>,
     ) -> Result<Response<GrpcResponse>, Status> {
-        println!("SS received a sign_merkle_tree_response: {}", response.get_ref().message);
-        output_current_time("");
+        output_current_time("SS received a sign_merkle_tree_response");
+
+        let response = response.into_inner();
+        let ss = self.ss.read().await;
+        println!("root matches: {}",response.root == ss.root);
 
         let reply = communication::Response {
             message: "ACK".to_string(),
@@ -177,6 +182,7 @@ impl SS {
             tx_hashes: Vec::new(),
             gs_tx_receiver_ports: vec![3100],
             slot_assignments: BTreeMap::new(),
+            root: [0u8; 32],
         }
     }
     pub fn add_transaction(&mut self, tx: Transaction) {
@@ -297,8 +303,15 @@ pub async fn run_ss(config_file: &str, index: usize) -> Result<(), Box<dyn std::
         .collect::<Vec<[u8; 32]>>();
     let elapsed = start.elapsed();
     println!("Hashed {} transactions in {:?}", tx_hashes.len(), elapsed);
+    let start = Instant::now();
+    let mt = MerkleTree::<Keccak256>::from_leaves(&tx_hashes);
+    let duration = start.elapsed();
+    ss.root = mt.root().unwrap();
+    println!("Build MerkleTree: {:?}", duration);
     ss.add_all_tx_hashes(tx_hashes);
+
     println!("SS generated {} transactions", ss.get_transactions().len());
+    println!("root: {:?}", ss.root);
 
     println!("SS is listening on {}", addr);
 

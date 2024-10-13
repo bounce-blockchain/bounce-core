@@ -16,7 +16,7 @@ service SATService {
 
 service SSService {
     rpc HandleStart (Start) returns (Response);
-    rpc HandleSignMerkleTreeResponse (Response) returns (Response);
+    rpc HandleSignMerkleTreeResponse (SignMerkleTreeResponse) returns (Response);
 }
 
 message Message {
@@ -58,4 +58,9 @@ message Start {
     uint64 t = 6;
     uint32 f = 7;
     CommitRecord genesis_record = 8;
+}
+
+message SignMerkleTreeResponse {
+    bytes signature = 1;
+    bytes root = 2;
 }

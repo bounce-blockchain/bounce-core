@@ -1,13 +1,17 @@
 use tonic::{transport::Server, Request, Response, Status};
-use communication::{gs_service_server::{GsService, GsServiceServer}, Start, Response as GrpcResponse};
-use bounce_core::types::{ArchivedSignMerkleTreeRequest};
+use communication::{gs_service_server::{GsService, GsServiceServer}, Start, Response as GrpcResponse, SignMerkleTreeResponse};
+use bounce_core::types::{ArchivedSignMerkleTreeRequest, Keccak256};
 use bounce_core::common::*;
 use bounce_core::config::Config;
+use rayon::prelude::*;
 use tokio::runtime::Runtime;
 use std::env;
 
 use std::net::{SocketAddr};
 use std::sync::Arc;
+use std::time::Instant;
+use keccak_hash::keccak;
+use rs_merkle::MerkleTree;
 use tokio::io::{AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
@@ -123,11 +127,25 @@ pub async fn handle_connection<'a>(mut socket: TcpStream, ss_ips:Vec<String>) ->
 
     output_current_time("Received sign_merkle_tree_request");
 
-    // let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss_ips[0])).await?;
-    // let response = tonic::Request::new(GrpcResponse {
-    //     message: "SignMerkleTreeResponse".into(),
-    // });
-    // client.handle_sign_merkle_tree_response(response).await?;
+    let start = Instant::now();
+    let hashes = archived.txs
+        .par_iter()
+        .map(|tx| keccak(&tx.0).into())
+        .collect::<Vec<[u8; 32]>>();
+    let duration = start.elapsed();
+    println!("Hashing of txs: {:?}", duration);
+
+    let start = Instant::now();
+    let mt = MerkleTree::<Keccak256>::from_leaves(&hashes);
+    let duration = start.elapsed();
+    println!("Build MerkleTree: {:?}", duration);
+
+    let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss_ips[0])).await?;
+    let sign_mk_response = tonic::Request::new(SignMerkleTreeResponse {
+        signature: vec![],
+        root: mt.root().unwrap().to_vec(),
+    });
+    client.handle_sign_merkle_tree_response(sign_mk_response).await?;
 
     Ok(())
 }
