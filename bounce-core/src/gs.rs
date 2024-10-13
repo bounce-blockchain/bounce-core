@@ -5,7 +5,7 @@ use bounce_core::common::*;
 use bounce_core::config::Config;
 use tokio::runtime::Runtime;
 use std::env;
-
+use std::io::Cursor;
 use std::net::{SocketAddr};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt};
@@ -115,10 +115,15 @@ pub async fn handle_connection<'a>(mut socket: TcpStream, ss_ips:Vec<String>) ->
     output_current_time(&format!("Received {} bytes from a client", buffer.len()));
 
     let start = std::time::Instant::now();
-    let archived = unsafe {rkyv::access_unchecked::<ArchivedSignMerkleTreeRequest>(&buffer)};
+    let decompressed = zstd::stream::decode_all(Cursor::new(buffer)).unwrap();
+    let elapsed_time = start.elapsed();
+    println!("Decompressed {} bytes in {:.2?}", decompressed.len(), elapsed_time);
+
+    let start = std::time::Instant::now();
+    let archived = unsafe {rkyv::access_unchecked::<ArchivedSignMerkleTreeRequest>(&decompressed)};
     //let sign_merkle_tree_request = rkyv::deserialize::<ArchivedSignMerkleTreeRequest, rancor::Error>(archived).unwrap();
     let elapsed_time = start.elapsed();
-    println!("Deserialized {} bytes in {:.2?}", buffer.len(), elapsed_time);
+    println!("Deserialized {} bytes in {:.2?}", decompressed.len(), elapsed_time);
     println!("Received sign_merkle_tree_request with {} txs", archived.txs.len());
 
     output_current_time("Received sign_merkle_tree_request");

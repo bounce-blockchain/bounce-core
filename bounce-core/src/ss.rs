@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::env;
 use std::sync::Arc;
+use std::io::Cursor;
 use communication::{ss_service_server::{SsService, SsServiceServer}, Start, Response as GrpcResponse};
 use bounce_core::types::{Transaction, SignMerkleTreeRequest, State};
 use bounce_core::config::Config;
@@ -218,7 +219,17 @@ impl SS {
         let elapsed = start.elapsed();
         println!("Serialized sign_merkle_tree_request in {:?}", elapsed);
 
-        let sharable_data = Arc::new(serialized_data);
+        let start = std::time::Instant::now();
+        let cursor = Cursor::new(serialized_data);
+        let elapsed = start.elapsed();
+        println!("Created cursor in {:?}", elapsed);
+
+        let start = std::time::Instant::now();
+        let compressed_data = zstd::stream::encode_all(cursor, 0).unwrap();
+        let elapsed = start.elapsed();
+        println!("Compressed sign_merkle_tree_request in {:?}", elapsed);
+
+        let sharable_data = Arc::new(compressed_data);
 
         let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
 
