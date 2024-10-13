@@ -226,11 +226,11 @@ impl SS {
         println!("Created cursor in {:?}", elapsed);
 
         let start = std::time::Instant::now();
-        let compressed_data = zstd::stream::encode_all(cursor, 1).unwrap();
+        let compressed_data = zstd::stream::encode_all(cursor, -22).unwrap();
         let elapsed = start.elapsed();
         println!("Compressed sign_merkle_tree_request in {:?}", elapsed);
 
-        println!("Compression ratio: {}", compressed_data.len() as f64 / serialized_data_len as f64);
+        println!("Compression ratio: {}", serialized_data_len as f64 / compressed_data.len() as f64);
 
         let sharable_data = Arc::new(compressed_data);
 
