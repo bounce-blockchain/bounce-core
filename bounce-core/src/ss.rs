@@ -97,9 +97,7 @@ impl SsService for SSLockService {
 
         let start = std::time::Instant::now();
         let sign_merkle_tree_request = SignMerkleTreeRequest {
-            root: <[u8; 32]>::try_from(vec![0u8; 32]).unwrap(),
             txs: std::mem::take(&mut ss.transactions),
-            hashes: std::mem::take(&mut ss.tx_hashes),
         };
         let elapsed = start.elapsed();
         println!("Created sign_merkle_tree_request in {:?}", elapsed);
@@ -292,10 +290,13 @@ pub async fn run_ss(config_file: &str, index: usize) -> Result<(), Box<dyn std::
         );
         ss.add_transaction(tx);
     }
+    let start = std::time::Instant::now();
     let tx_hashes = ss.get_transactions()
         .par_iter()
         .map(|tx| keccak(tx.as_ref()).into())
         .collect::<Vec<[u8; 32]>>();
+    let elapsed = start.elapsed();
+    println!("Hashed {} transactions in {:?}", tx_hashes.len(), elapsed);
     ss.add_all_tx_hashes(tx_hashes);
     println!("SS generated {} transactions", ss.get_transactions().len());
 

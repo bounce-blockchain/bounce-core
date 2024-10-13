@@ -61,8 +61,6 @@ impl AsRef<[u8]> for Transaction {
     derive(Debug),
 )]
 pub struct SignMerkleTreeRequest {
-    pub root: [u8; 32],
-    pub hashes: Vec<[u8; 32]>,
     pub txs: Vec<Transaction>,
 }
 
