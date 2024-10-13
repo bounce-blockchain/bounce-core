@@ -218,6 +218,7 @@ impl SS {
         let serialized_data = rkyv::to_bytes::<Error>(sign_merkle_tree_request).unwrap();
         let elapsed = start.elapsed();
         println!("Serialized sign_merkle_tree_request in {:?}", elapsed);
+        let serialized_data_len = serialized_data.len();
 
         let start = std::time::Instant::now();
         let cursor = Cursor::new(serialized_data);
@@ -225,9 +226,11 @@ impl SS {
         println!("Created cursor in {:?}", elapsed);
 
         let start = std::time::Instant::now();
-        let compressed_data = zstd::stream::encode_all(cursor, 0).unwrap();
+        let compressed_data = zstd::stream::encode_all(cursor, 1).unwrap();
         let elapsed = start.elapsed();
         println!("Compressed sign_merkle_tree_request in {:?}", elapsed);
+
+        println!("Compression ratio: {}", compressed_data.len() as f64 / serialized_data_len as f64);
 
         let sharable_data = Arc::new(compressed_data);
 
@@ -290,16 +293,16 @@ pub async fn run_ss(config_file: &str, index: usize) -> Result<(), Box<dyn std::
 
     println!("SS is generating transactions");
     //generate 1million transactions
-    let mut rng = rand::thread_rng();
-    let mut data = [0u8; 256];
-    rng.fill(&mut data);
-    let data = data.to_vec();
     for i in 0..1_000_000 {
+        let mut rng = rand::thread_rng();
+        let mut data = [0u8; 256];
+        rng.fill(&mut data);
+        let data = data.to_vec();
         let tx = Transaction::new(
             PublicKey::default(),
             PublicKey::default(),
             i,
-            data.clone(),
+            data,
         );
         ss.add_transaction(tx);
     }
