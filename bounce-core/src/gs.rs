@@ -6,14 +6,15 @@ use bounce_core::config::Config;
 use rayon::prelude::*;
 use tokio::runtime::Runtime;
 use std::env;
-
-use std::net::{SocketAddr};
+use std::collections::HashMap;
+use std::net::{SocketAddr,Ipv4Addr};
 use std::sync::Arc;
 use std::time::Instant;
 use keccak_hash::keccak;
+use rkyv::rancor;
 use rs_merkle::MerkleTree;
 use tokio::io::{AsyncReadExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::RwLock;
 use tokio::task;
 use bls::min_pk::{PublicKey, SecretKey};
@@ -90,7 +91,7 @@ impl GS {
     }
 }
 
-pub async fn handle_connection<'a>(mut socket: TcpStream, ss_ips:Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn handle_connection(mut socket: TcpStream, ss_ips:Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     // Buffer for incoming data
     let mut buffer = Vec::new();
     let mut chunk = vec![0u8; 2*1024*1024]; // Read in 2 MB chunks
@@ -151,25 +152,116 @@ pub async fn handle_connection<'a>(mut socket: TcpStream, ss_ips:Vec<String>) ->
 }
 
 pub async fn run_listener(addr: SocketAddr, ss_ips: Vec<String>) {
-    let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
-    println!("Server listening on {}", addr);
+    // let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
+    // println!("Server listening on {}", addr);
+    //
+    // loop {
+    //     match listener.accept().await {
+    //         Ok((socket, _)) => {
+    //             println!("Accepted connection from: {}", socket.peer_addr().unwrap());
+    //             let ss_ips = ss_ips.clone();
+    //             task::spawn(async move{
+    //                 if let Err(e) = handle_connection(socket, ss_ips).await {
+    //                     eprintln!("Failed to handle connection: {:?}", e);
+    //                 }
+    //             });
+    //         }
+    //         Err(e) => {
+    //             eprintln!("Failed to accept connection: {:?}", e);
+    //         }
+    //     }
+    // }
+    run_listener_multicast(ss_ips).await.unwrap();
+}
+
+pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn std::error::Error>>{
+    const MAX_UDP_PACKET_SIZE: usize = 65_507;
+
+    let multicast_addr: Ipv4Addr = "239.255.0.1".parse().unwrap();
+    let port = 3102;
+
+    let socket = UdpSocket::bind(("0.0.0.0", port)).await?;
+    if let Err(e) = socket.join_multicast_v4(multicast_addr, Ipv4Addr::UNSPECIFIED) {
+        eprintln!("Failed to join multicast group: {:?}", e);
+        return Err(Box::new(e));
+    }
+
+    println!("Server listening on multicast group {}:{}", multicast_addr, port);
+
+    let mut buffer = vec![0u8; MAX_UDP_PACKET_SIZE];
+    let mut message_fragments: HashMap<u32, Vec<Option<Vec<u8>>>> = HashMap::new();
+    let mut received_lengths: HashMap<u32, usize> = HashMap::new();
 
     loop {
-        match listener.accept().await {
-            Ok((socket, _)) => {
-                println!("Accepted connection from: {}", socket.peer_addr().unwrap());
-                let ss_ips = ss_ips.clone();
-                task::spawn(async move{
-                    if let Err(e) = handle_connection(socket, ss_ips).await {
-                        eprintln!("Failed to handle connection: {:?}", e);
-                    }
-                });
+        let (bytes_received, src_addr) = socket.recv_from(&mut buffer).await?;
+        println!("Received {} bytes from {}", bytes_received, src_addr);
+
+        // Deserialize the header and the chunk
+        let (message_id, sequence_number, total_chunks): (u32, u32, u32) = bincode::deserialize(&buffer[..12]).unwrap();
+        let chunk = &buffer[12..bytes_received];
+
+        println!("Received chunk {}/{} of message {}", sequence_number + 1, total_chunks, message_id);
+
+        // Initialize storage for fragments if this is the first chunk of the message
+        let entry = message_fragments.entry(message_id).or_insert_with(|| vec![None; total_chunks as usize]);
+
+        // Store the received chunk in the correct position
+        entry[sequence_number as usize] = Some(chunk.to_vec());
+
+        // Track how many chunks have been received
+        *received_lengths.entry(message_id).or_insert(0) += 1;
+
+        // If all chunks have been received, reassemble the message
+        if received_lengths[&message_id] == total_chunks as usize {
+            println!("Reassembling message {} from {} chunks", message_id, total_chunks);
+
+            let mut full_message = Vec::new();
+            for chunk in message_fragments.remove(&message_id).unwrap() {
+                full_message.extend(chunk.unwrap()); // Combine chunks in order
             }
-            Err(e) => {
-                eprintln!("Failed to accept connection: {:?}", e);
-            }
+
+            // Process the reassembled message
+            process_data(&full_message, &ss_ips).await?;
         }
     }
+}
+
+async fn process_data(data: &[u8], ss_ips: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Processing reassembled data of size: {}", data.len());
+
+    // Here you would handle the fully reassembled message
+    // (e.g., deserialize it and perform the desired action)
+
+    let start = std::time::Instant::now();
+    let archived = unsafe {rkyv::access_unchecked::<ArchivedSignMerkleTreeRequest>(data)};
+    //let sign_merkle_tree_request = rkyv::deserialize::<ArchivedSignMerkleTreeRequest, rancor::Error>(archived).unwrap();
+    let elapsed_time = start.elapsed();
+    println!("Deserialized {} bytes in {:.2?}", data.len(), elapsed_time);
+    println!("Received sign_merkle_tree_request with {} txs", archived.txs.len());
+
+    output_current_time("Received sign_merkle_tree_request");
+
+    let start = Instant::now();
+    let hashes = archived.txs
+        .par_iter()
+        .map(|tx| keccak(&tx.0).into())
+        .collect::<Vec<[u8; 32]>>();
+    let duration = start.elapsed();
+    println!("Hashing of txs: {:?}", duration);
+
+    let start = Instant::now();
+    let mt = MerkleTree::<Keccak256>::from_leaves(&hashes);
+    let duration = start.elapsed();
+    println!("Build MerkleTree: {:?}", duration);
+
+    let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss_ips[0])).await?;
+    let sign_mk_response = tonic::Request::new(SignMerkleTreeResponse {
+        signature: vec![],
+        root: mt.root().unwrap().to_vec(),
+    });
+    client.handle_sign_merkle_tree_response(sign_mk_response).await?;
+
+    Ok(())
 }
 
 pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::error::Error>> {

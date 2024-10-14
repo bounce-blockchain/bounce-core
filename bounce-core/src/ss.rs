@@ -18,7 +18,7 @@ use std::net::{SocketAddr};
 use std::time::{Duration, Instant};
 use rs_merkle::MerkleTree;
 use tokio::io::{AsyncWriteExt};
-use tokio::net::{TcpStream};
+use tokio::net::{TcpStream,UdpSocket};
 use tokio::runtime::{Runtime};
 use tokio::sync::RwLock;
 use tokio::task::JoinSet;
@@ -110,7 +110,7 @@ impl SsService for SSLockService {
         for i in 0..10 {
             println!("SS is sending sign_merkle_tree_request {}", i);
             let start = std::time::Instant::now();
-            let duration = ss.send_sign_merkle_tree_request(&sign_merkle_tree_request).await.expect("Failed to send transactions");
+            let duration = ss.send_sign_merkle_tree_request_multicast(&sign_merkle_tree_request).await.expect("Failed to send transactions");
             let elapsed = start.elapsed();
             println!("sign_merkle_tree_request {} sent. Total Time: {:?}", i, elapsed);
             durations.push(duration);
@@ -270,6 +270,40 @@ impl SS {
 
         Ok(elapsed)
     }
+
+    pub async fn send_sign_merkle_tree_request_multicast(&self, sign_merkle_tree_request:&SignMerkleTreeRequest) -> std::io::Result<Duration> {
+        const MAX_UDP_PACKET_SIZE: usize = 65_507; // Maximum safe UDP packet size
+        const CHUNK_SIZE: usize = 9200; // Allowing room for headers
+
+        let socket = UdpSocket::bind("0.0.0.0:0").await?;
+        let multicast_socket_addr: SocketAddr = format!("{}:{}", "239.255.0.1", 3102).parse().unwrap();
+        socket.set_multicast_ttl_v4(1)?;
+
+        let serialized_data = rkyv::to_bytes::<Error>(sign_merkle_tree_request).unwrap();
+
+        let data_len = serialized_data.len();
+        println!("Data length: {}", data_len);
+        let num_chunks = (data_len + CHUNK_SIZE - 1) / CHUNK_SIZE; // Calculate how many chunks
+
+        let start = std::time::Instant::now();
+        for (i, chunk) in serialized_data.chunks(CHUNK_SIZE).enumerate() {
+            let message_id = 1; // Could be randomized or incremented for multiple messages
+            let sequence_number = i as u32;
+            let header = (message_id, sequence_number, num_chunks as u32); // (message_id, seq_num, total_chunks)
+
+            // Serialize header and chunk
+            let mut packet = bincode::serialize(&header).unwrap();
+            packet.extend_from_slice(chunk);
+            println!("packet length: {}", packet.len());
+
+            // Send each chunk
+            socket.send_to(&packet, multicast_socket_addr).await?;
+            println!("Sent chunk {}/{} to {}", sequence_number + 1, num_chunks, multicast_socket_addr);
+        }
+        let elapsed = start.elapsed();
+        println!("Sent all chunks in {:?}", elapsed);
+        Ok(elapsed)
+    }
 }
 
 pub async fn run_ss(config_file: &str, index: usize) -> Result<(), Box<dyn std::error::Error>> {
@@ -283,7 +317,7 @@ pub async fn run_ss(config_file: &str, index: usize) -> Result<(), Box<dyn std::
 
     println!("SS is generating transactions");
     //generate 1million transactions
-    for i in 0..1_000_000 {
+    for i in 0..10 {
         let mut rng = rand::thread_rng();
         let mut data = [0u8; 256];
         rng.fill(&mut data);
