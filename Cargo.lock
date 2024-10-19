@@ -306,6 +306,7 @@ dependencies = [
  "rkyv",
  "rs_merkle",
  "serde",
+ "socket2",
  "tokio",
  "toml",
  "tonic",

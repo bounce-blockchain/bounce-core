@@ -16,6 +16,7 @@ use rand::Rng;
 //use rand::thread_rng;
 use std::net::{SocketAddr};
 use std::time::{Duration, Instant};
+use socket2::{Socket};
 use rs_merkle::MerkleTree;
 use tokio::io::{AsyncWriteExt};
 use tokio::net::{TcpStream,UdpSocket};
@@ -276,8 +277,18 @@ impl SS {
         const CHUNK_SIZE: usize = 9200; // Allowing room for headers
 
         let socket = UdpSocket::bind("0.0.0.0:0").await?;
-        let multicast_socket_addr: SocketAddr = format!("{}:{}", "239.255.0.1", 3102).parse().unwrap();
+        let std_socket = socket.into_std()?;
+        let socket2_socket = Socket::from(std_socket);
+        let send_buffer_size = socket2_socket.send_buffer_size()?;
+        println!("Current send buffer size: {} bytes", send_buffer_size);
+        socket2_socket.set_send_buffer_size(8 * 1024 * 1024)?; // 8 MB buffer
+        let send_buffer_size = socket2_socket.send_buffer_size()?;
+        println!("New send buffer size: {} bytes", send_buffer_size);
+        let socket = UdpSocket::from_std(socket2_socket.into())?;
         socket.set_multicast_ttl_v4(1)?;
+
+        let multicast_socket_addr: SocketAddr = format!("{}:{}", "239.255.0.1", 3102).parse().unwrap();
+
         let shared_socket = Arc::new(socket);
 
         let serialized_data = rkyv::to_bytes::<Error>(sign_merkle_tree_request).unwrap();
