@@ -13,6 +13,7 @@ use std::time::Instant;
 use keccak_hash::keccak;
 use rkyv::rancor;
 use rs_merkle::MerkleTree;
+use socket2::Socket;
 use tokio::io::{AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::RwLock;
@@ -181,6 +182,15 @@ pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn s
     let port = 3102;
 
     let socket = UdpSocket::bind(("0.0.0.0", port)).await?;
+    let std_socket = socket.into_std()?;
+    let socket2_socket = Socket::from(std_socket);
+    let recv_buffer_size = socket2_socket.recv_buffer_size()?;
+    println!("Current send buffer size: {} bytes", recv_buffer_size);
+    socket2_socket.set_send_buffer_size(8 * 1024 * 1024)?; // 8 MB buffer
+    let recv_buffer_size = socket2_socket.recv_buffer_size()?;
+    println!("New send buffer size: {} bytes", recv_buffer_size);
+    let socket = UdpSocket::from_std(socket2_socket.into())?;
+
     if let Err(e) = socket.join_multicast_v4(multicast_addr, Ipv4Addr::UNSPECIFIED) {
         eprintln!("Failed to join multicast group: {:?}", e);
         return Err(Box::new(e));
