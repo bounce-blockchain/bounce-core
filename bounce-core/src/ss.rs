@@ -278,6 +278,7 @@ impl SS {
         let socket = UdpSocket::bind("0.0.0.0:0").await?;
         let multicast_socket_addr: SocketAddr = format!("{}:{}", "239.255.0.1", 3102).parse().unwrap();
         socket.set_multicast_ttl_v4(1)?;
+        let shared_socket = Arc::new(socket);
 
         let serialized_data = rkyv::to_bytes::<Error>(sign_merkle_tree_request).unwrap();
 
@@ -285,23 +286,40 @@ impl SS {
         println!("Data length: {}", data_len);
         let num_chunks = (data_len + CHUNK_SIZE - 1) / CHUNK_SIZE; // Calculate how many chunks
 
+        let mut join_set = JoinSet::new();
         let start = std::time::Instant::now();
         for (i, chunk) in serialized_data.chunks(CHUNK_SIZE).enumerate() {
+            let socket = shared_socket.clone();
+            let chunk = chunk.to_vec(); // Clone the chunk for parallel processing
+            let multicast_socket_addr = multicast_socket_addr.clone();
             let message_id = 1; // Could be randomized or incremented for multiple messages
             let sequence_number = i as u32;
-            let header = (message_id, sequence_number, num_chunks as u32); // (message_id, seq_num, total_chunks)
+            let total_chunks = num_chunks as u32;
 
-            // Serialize header and chunk
-            let mut packet = bincode::serialize(&header).unwrap();
-            packet.extend_from_slice(chunk);
-            println!("packet length: {}", packet.len());
+            // Spawn a new task to send the chunk in parallel
+            join_set.spawn(async move {
+                let header = (message_id, sequence_number, total_chunks); // (message_id, seq_num, total_chunks)
 
-            // Send each chunk
-            socket.send_to(&packet, multicast_socket_addr).await?;
-            println!("Sent chunk {}/{} to {}", sequence_number + 1, num_chunks, multicast_socket_addr);
+                // Serialize header and chunk
+                let mut packet = bincode::serialize(&header).unwrap();
+                packet.extend_from_slice(&chunk);
+
+                // Send each chunk
+                if let Err(e) = socket.send_to(&packet, multicast_socket_addr).await {
+                    eprintln!("Failed to send chunk {}/{}: {:?}", sequence_number + 1, total_chunks, e);
+                } else {
+                    println!("Sent chunk {}/{}", sequence_number + 1, total_chunks);
+                }
+            });
         }
         let elapsed = start.elapsed();
+        print!("Spawned all workers in {:?}", elapsed);
+
+        let start = std::time::Instant::now();
+        join_set.join_all().await;
+        let elapsed = start.elapsed();
         println!("Sent all chunks in {:?}", elapsed);
+
         Ok(elapsed)
     }
 }
@@ -317,7 +335,7 @@ pub async fn run_ss(config_file: &str, index: usize) -> Result<(), Box<dyn std::
 
     println!("SS is generating transactions");
     //generate 1million transactions
-    for i in 0..10 {
+    for i in 0..1_000_000 {
         let mut rng = rand::thread_rng();
         let mut data = [0u8; 256];
         rng.fill(&mut data);
