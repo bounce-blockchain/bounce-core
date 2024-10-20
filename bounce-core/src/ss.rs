@@ -289,7 +289,7 @@ impl SS {
 
         let multicast_socket_addr: SocketAddr = format!("{}:{}", "239.255.0.1", 3102).parse().unwrap();
 
-        let shared_socket = Arc::new(socket);
+        //let shared_socket = Arc::new(socket);
 
         let serialized_data = rkyv::to_bytes::<Error>(sign_merkle_tree_request).unwrap();
 
@@ -297,10 +297,10 @@ impl SS {
         println!("Data length: {}", data_len);
         let num_chunks = (data_len + CHUNK_SIZE - 1) / CHUNK_SIZE; // Calculate how many chunks
 
-        let mut join_set = JoinSet::new();
+        //let mut join_set = JoinSet::new();
         let start = std::time::Instant::now();
         for (i, chunk) in serialized_data.chunks(CHUNK_SIZE).enumerate() {
-            let socket = shared_socket.clone();
+            //let socket = shared_socket.clone();
             let chunk = chunk.to_vec(); // Clone the chunk for parallel processing
             let multicast_socket_addr = multicast_socket_addr.clone();
             let message_id = 1; // Could be randomized or incremented for multiple messages
@@ -308,7 +308,7 @@ impl SS {
             let total_chunks = num_chunks as u32;
 
             // Spawn a new task to send the chunk in parallel
-            join_set.spawn(async move {
+            //join_set.spawn(async move {
                 let header = (message_id, sequence_number, total_chunks); // (message_id, seq_num, total_chunks)
 
                 // Serialize header and chunk
@@ -321,14 +321,14 @@ impl SS {
                 } else {
                     println!("Sent chunk {}/{}", sequence_number + 1, total_chunks);
                 }
-            });
+            //});
         }
         let elapsed = start.elapsed();
-        print!("Spawned all workers in {:?}", elapsed);
-
-        let start = std::time::Instant::now();
-        join_set.join_all().await;
-        let elapsed = start.elapsed();
+        // print!("Spawned all workers in {:?}", elapsed);
+        //
+        // let start = std::time::Instant::now();
+        // join_set.join_all().await;
+        // let elapsed = start.elapsed();
         println!("Sent all chunks in {:?}", elapsed);
 
         Ok(elapsed)
