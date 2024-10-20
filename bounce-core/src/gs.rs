@@ -188,7 +188,7 @@ pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn s
     println!("Current receive buffer size: {} bytes", recv_buffer_size);
     socket2_socket.set_recv_buffer_size(8 * 1024 * 1024)?; // 8 MB buffer
     let recv_buffer_size = socket2_socket.recv_buffer_size()?;
-    println!("New receive2 buffer size: {} bytes", recv_buffer_size);
+    println!("New receive buffer size: {} bytes", recv_buffer_size);
     let socket = UdpSocket::from_std(socket2_socket.into())?;
 
     if let Err(e) = socket.join_multicast_v4(multicast_addr, Ipv4Addr::UNSPECIFIED) {
