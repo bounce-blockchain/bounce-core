@@ -11,7 +11,7 @@ use keccak_hash::keccak;
 use key_manager::keyloader;
 use rayon::prelude::*;
 use rkyv::{rancor::Error};
-use rand::Rng;
+use rand::{random, Rng};
 //use rand::seq::SliceRandom;
 //use rand::thread_rng;
 use std::net::{SocketAddr};
@@ -303,7 +303,7 @@ impl SS {
             //let socket = shared_socket.clone();
             let chunk = chunk.to_vec(); // Clone the chunk for parallel processing
             let multicast_socket_addr = multicast_socket_addr.clone();
-            let message_id = 1; // Could be randomized or incremented for multiple messages
+            let message_id:u32 = random();
             let sequence_number = i as u32;
             let total_chunks = num_chunks as u32;
 
