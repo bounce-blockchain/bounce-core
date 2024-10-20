@@ -274,7 +274,7 @@ impl SS {
 
     pub async fn send_sign_merkle_tree_request_multicast(&self, sign_merkle_tree_request:&SignMerkleTreeRequest) -> std::io::Result<Duration> {
         const MAX_UDP_PACKET_SIZE: usize = 65_507; // Maximum safe UDP packet size
-        const CHUNK_SIZE: usize = 9200; // Allowing room for headers
+        const CHUNK_SIZE: usize = 65_400; // Allowing room for headers
 
         let socket = UdpSocket::bind("0.0.0.0:0").await?;
         let std_socket = socket.into_std()?;
@@ -298,12 +298,13 @@ impl SS {
         let num_chunks = (data_len + CHUNK_SIZE - 1) / CHUNK_SIZE; // Calculate how many chunks
 
         //let mut join_set = JoinSet::new();
+        let message_id:u32 = random();
+        output_current_time("Sending sign_merkle_tree_request...");
         let start = std::time::Instant::now();
         for (i, chunk) in serialized_data.chunks(CHUNK_SIZE).enumerate() {
             //let socket = shared_socket.clone();
             let chunk = chunk.to_vec(); // Clone the chunk for parallel processing
             let multicast_socket_addr = multicast_socket_addr.clone();
-            let message_id:u32 = random();
             let sequence_number = i as u32;
             let total_chunks = num_chunks as u32;
 
@@ -319,7 +320,7 @@ impl SS {
                 if let Err(e) = socket.send_to(&packet, multicast_socket_addr).await {
                     eprintln!("Failed to send chunk {}/{}: {:?}", sequence_number + 1, total_chunks, e);
                 } else {
-                    println!("Sent chunk {}/{}", sequence_number + 1, total_chunks);
+                    //println!("Sent chunk {}/{}", sequence_number + 1, total_chunks);
                 }
             //});
         }

@@ -204,13 +204,13 @@ pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn s
 
     loop {
         let (bytes_received, src_addr) = socket.recv_from(&mut buffer).await?;
-        println!("Received {} bytes from {}", bytes_received, src_addr);
+        //println!("Received {} bytes from {}", bytes_received, src_addr);
 
         // Deserialize the header and the chunk
         let (message_id, sequence_number, total_chunks): (u32, u32, u32) = bincode::deserialize(&buffer[..12]).unwrap();
         let chunk = &buffer[12..bytes_received];
 
-        println!("Received chunk {}/{} of message {}", sequence_number + 1, total_chunks, message_id);
+        //println!("Received chunk {}/{} of message {}", sequence_number + 1, total_chunks, message_id);
 
         // Initialize storage for fragments if this is the first chunk of the message
         let entry = message_fragments.entry(message_id).or_insert_with(|| vec![None; total_chunks as usize]);
