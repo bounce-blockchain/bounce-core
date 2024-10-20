@@ -250,7 +250,7 @@ async fn process_data(data: &[u8], ss_ips: &[String]) -> Result<(), Box<dyn std:
     println!("Received sign_merkle_tree_request with {} txs", archived.txs.len());
 
     output_current_time("Received sign_merkle_tree_request");
-
+/*
     let start = Instant::now();
     let hashes = archived.txs
         .par_iter()
@@ -270,7 +270,7 @@ async fn process_data(data: &[u8], ss_ips: &[String]) -> Result<(), Box<dyn std:
         root: mt.root().unwrap().to_vec(),
     });
     client.handle_sign_merkle_tree_response(sign_mk_response).await?;
-
+*/
     Ok(())
 }
 
