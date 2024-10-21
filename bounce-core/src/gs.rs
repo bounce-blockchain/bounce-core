@@ -207,7 +207,7 @@ pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn s
 
     loop {
         // Use a timeout for receiving packets to handle missing packets
-        if let Ok((bytes_received, src_addr)) = timeout(TIMEOUT_DURATION, socket.recv_from(&mut buffer)).await.unwrap() {
+        if let Ok(Ok((bytes_received, src_addr))) = timeout(TIMEOUT_DURATION, socket.recv_from(&mut buffer)).await {
             // Deserialize the header and the chunk
             let (message_id, sequence_number, total_chunks): (u32, u32, u32) = bincode::deserialize(&buffer[..12]).unwrap();
             let chunk = &buffer[12..bytes_received];
