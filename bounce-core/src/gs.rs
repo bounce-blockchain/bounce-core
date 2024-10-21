@@ -217,10 +217,16 @@ pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn s
                     if !missing_set.is_empty() {
                         println!("Requesting retransmission for message {}: missing {} chunks ", message_id, missing_set.len());
 
+                        let mut missing_vec: Vec<u32> = missing_set.iter().copied().collect();
+                        if missing_vec.len() > 10000 {
+                            println!("Too many missing chunks, selecting only the first 10000");
+                            missing_vec.sort_unstable();
+                            missing_vec.truncate(10000);
+                        }
                         // Send retransmission request for missing chunks
                         let retransmission_request = RetransmissionRequest {
                             message_id,
-                            missing_chunks: missing_set.iter().copied().collect(),
+                            missing_chunks: missing_vec,
                         };
 
                         let serialized_request = bincode::serialize(&retransmission_request).unwrap();
