@@ -215,7 +215,7 @@ pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn s
             Err(_) => {
                 for (&message_id, missing_set) in &waiting_for_chunks {
                     if !missing_set.is_empty() {
-                        println!("Requesting retransmission for message {}: missing chunks {:?}", message_id, missing_set);
+                        println!("Requesting retransmission for message {}: missing {} chunks ", message_id, missing_set.len());
 
                         // Send retransmission request for missing chunks
                         let retransmission_request = RetransmissionRequest {

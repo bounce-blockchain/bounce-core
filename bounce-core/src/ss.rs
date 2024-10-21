@@ -351,6 +351,7 @@ async fn listen_for_retransmission_requests(
 
     loop {
         // Listen for retransmission requests
+        println!("Listening for retransmission requests...");
         if let Ok((len, _src_addr)) = socket.recv_from(&mut buffer).await {
             if let Ok(retransmission_request) = bincode::deserialize::<RetransmissionRequest>(&buffer[..len]) {
                 if retransmission_request.message_id == message_id {
@@ -373,6 +374,8 @@ async fn listen_for_retransmission_requests(
                     }
                 }
             }
+        } else {
+            eprintln!("Failed to receive retransmission request");
         }
     }
 }
