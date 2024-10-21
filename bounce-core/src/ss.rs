@@ -372,7 +372,11 @@ async fn listen_for_retransmission_requests(
                             }
                         }
                     }
+                } else {
+                    eprintln!("Received retransmission request for unknown message_id: {}", retransmission_request.message_id);
                 }
+            } else {
+                eprintln!("Failed to deserialize retransmission request");
             }
         } else {
             eprintln!("Failed to receive retransmission request");
