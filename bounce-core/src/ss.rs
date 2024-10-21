@@ -356,7 +356,7 @@ async fn listen_for_retransmission_requests(
             println!("Received retransmission request, len: {}", len);
             if let Ok(retransmission_request) = bincode::deserialize::<RetransmissionRequest>(&buffer[..len]) {
                 if retransmission_request.message_id == message_id {
-                    println!("Received retransmission request for chunks: {:?}", retransmission_request.missing_chunks);
+                    println!("Received retransmission request for {} chunks", retransmission_request.missing_chunks.len());
                     if retransmission_request.missing_chunks.is_empty() {
                         println!("All chunks received");
                         break;
@@ -372,8 +372,6 @@ async fn listen_for_retransmission_requests(
                             // Resend the chunk
                             if let Err(e) = socket.send_to(&packet, multicast_socket_addr).await {
                                 eprintln!("Failed to resend chunk {}: {:?}", chunk_num, e);
-                            } else {
-                                println!("Resent chunk {}", chunk_num);
                             }
                         }
                     }
