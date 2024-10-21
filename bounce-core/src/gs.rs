@@ -1,13 +1,13 @@
 use tonic::{transport::Server, Request, Response, Status};
 use communication::{gs_service_server::{GsService, GsServiceServer}, Start, Response as GrpcResponse, SignMerkleTreeResponse};
-use bounce_core::types::{ArchivedSignMerkleTreeRequest, Keccak256,RetransmissionRequest};
+use bounce_core::types::{ArchivedSignMerkleTreeRequest, Keccak256, RetransmissionRequest};
 use bounce_core::common::*;
 use bounce_core::config::Config;
 use rayon::prelude::*;
 use tokio::runtime::Runtime;
 use std::env;
 use std::collections::{HashMap, HashSet};
-use std::net::{SocketAddr,Ipv4Addr};
+use std::net::{SocketAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use keccak_hash::keccak;
@@ -61,11 +61,9 @@ impl GsService for GSLockService {
 
         Ok(Response::new(reply))
     }
-
 }
 
 impl GS {
-
     pub fn new(config: Config, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>) -> Self {
         GS {
             config,
@@ -93,10 +91,10 @@ impl GS {
     }
 }
 
-pub async fn handle_connection(mut socket: TcpStream, ss_ips:Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     // Buffer for incoming data
     let mut buffer = Vec::new();
-    let mut chunk = vec![0u8; 2*1024*1024]; // Read in 2 MB chunks
+    let mut chunk = vec![0u8; 2 * 1024 * 1024]; // Read in 2 MB chunks
 
     let start = std::time::Instant::now();
     loop {
@@ -122,7 +120,7 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips:Vec<String>) -> Res
     output_current_time(&format!("Received {} bytes from a client", buffer.len()));
 
     let start = std::time::Instant::now();
-    let archived = unsafe {rkyv::access_unchecked::<ArchivedSignMerkleTreeRequest>(&buffer)};
+    let archived = unsafe { rkyv::access_unchecked::<ArchivedSignMerkleTreeRequest>(&buffer) };
     //let sign_merkle_tree_request = rkyv::deserialize::<ArchivedSignMerkleTreeRequest, rancor::Error>(archived).unwrap();
     let elapsed_time = start.elapsed();
     println!("Deserialized {} bytes in {:.2?}", buffer.len(), elapsed_time);
@@ -176,7 +174,7 @@ pub async fn run_listener(addr: SocketAddr, ss_ips: Vec<String>) {
     run_listener_multicast(ss_ips).await.unwrap();
 }
 
-pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn std::error::Error>>{
+pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     const MAX_UDP_PACKET_SIZE: usize = 65_507;
     const TIMEOUT_DURATION: Duration = Duration::from_secs(2);  // Timeout for retransmission
 
@@ -204,62 +202,73 @@ pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn s
     let mut message_fragments: HashMap<u32, Vec<Option<Vec<u8>>>> = HashMap::new();
     let mut received_lengths: HashMap<u32, usize> = HashMap::new();
     let mut waiting_for_chunks: HashMap<u32, HashSet<u32>> = HashMap::new();
+    let mut message_sender_addr: HashMap<u32, SocketAddr> = HashMap::new();
 
     loop {
         // Use a timeout for receiving packets to handle missing packets
-        if let Ok(Ok((bytes_received, src_addr))) = timeout(TIMEOUT_DURATION, socket.recv_from(&mut buffer)).await {
-            // Deserialize the header and the chunk
-            let (message_id, sequence_number, total_chunks): (u32, u32, u32) = bincode::deserialize(&buffer[..12]).unwrap();
-            let chunk = &buffer[12..bytes_received];
-
-            // Initialize storage for fragments if this is the first chunk of the message
-            let entry = message_fragments.entry(message_id).or_insert_with(|| vec![None; total_chunks as usize]);
-
-            // Store the received chunk in the correct position
-            entry[sequence_number as usize] = Some(chunk.to_vec());
-
-            // Track how many chunks have been received
-            *received_lengths.entry(message_id).or_insert(0) += 1;
-
-            // Track missing chunks if this is the first time we see the message
-            let missing_set = waiting_for_chunks.entry(message_id).or_insert_with(|| (0..total_chunks).collect());
-            missing_set.remove(&sequence_number);
-
-            // If all chunks have been received, reassemble the message
-            if received_lengths[&message_id] == total_chunks as usize {
-                println!("Reassembling message {} from {} chunks", message_id, total_chunks);
-
-                let mut full_message = Vec::new();
-                for chunk in message_fragments.remove(&message_id).unwrap() {
-                    full_message.extend(chunk.unwrap()); // Combine chunks in order
-                }
-
-                // Process the reassembled message
-                process_data(&full_message, &vec![]).await?;
-
-                // Remove tracking entries
-                received_lengths.remove(&message_id);
-                waiting_for_chunks.remove(&message_id);
+        let (bytes_received, src_addr) = match timeout(TIMEOUT_DURATION, socket.recv_from(&mut buffer)).await{
+            Ok(Ok((bytes_received, src_addr))) => (bytes_received, src_addr),
+            Ok(Err(e)) => {
+                eprintln!("Failed to receive from socket: {:?}", e);
+                continue;
             }
-        } else {
-            // Timeout occurred, check for missing chunks and request retransmission
-            for (&message_id, missing_set) in &waiting_for_chunks {
-                if !missing_set.is_empty() {
-                    println!("Requesting retransmission for message {}: missing chunks {:?}", message_id, missing_set);
+            Err(_) => {
+                for (&message_id, missing_set) in &waiting_for_chunks {
+                    if !missing_set.is_empty() {
+                        println!("Requesting retransmission for message {}: missing chunks {:?}", message_id, missing_set);
 
-                    // Send retransmission request for missing chunks
-                    let retransmission_request = RetransmissionRequest {
-                        message_id,
-                        missing_chunks: missing_set.iter().copied().collect(),
-                    };
+                        // Send retransmission request for missing chunks
+                        let retransmission_request = RetransmissionRequest {
+                            message_id,
+                            missing_chunks: missing_set.iter().copied().collect(),
+                        };
 
-                    let serialized_request = bincode::serialize(&retransmission_request).unwrap();
-                    socket.send_to(&serialized_request, "source_ip_address:source_port").await?;
+                        let serialized_request = bincode::serialize(&retransmission_request).unwrap();
+                        socket.send_to(&serialized_request, message_sender_addr[&message_id]).await?;
+                    }
                 }
+                continue;
             }
+        };
+        // Deserialize the header and the chunk
+        let (message_id, sequence_number, total_chunks): (u32, u32, u32) = bincode::deserialize(&buffer[..12]).unwrap();
+        let chunk = &buffer[12..bytes_received];
+
+        // Store the sender address for retransmission requests
+        message_sender_addr.insert(message_id, src_addr);
+
+        // Initialize storage for fragments if this is the first chunk of the message
+        let entry = message_fragments.entry(message_id).or_insert_with(|| vec![None; total_chunks as usize]);
+
+        // Store the received chunk in the correct position
+        entry[sequence_number as usize] = Some(chunk.to_vec());
+
+        // Track how many chunks have been received
+        *received_lengths.entry(message_id).or_insert(0) += 1;
+
+        // Track missing chunks if this is the first time we see the message
+        let missing_set = waiting_for_chunks.entry(message_id).or_insert_with(|| (0..total_chunks).collect());
+        missing_set.remove(&sequence_number);
+
+        // If all chunks have been received, reassemble the message
+        if received_lengths[&message_id] == total_chunks as usize {
+            println!("Reassembling message {} from {} chunks", message_id, total_chunks);
+
+            let mut full_message = Vec::new();
+            for chunk in message_fragments.remove(&message_id).unwrap() {
+                full_message.extend(chunk.unwrap()); // Combine chunks in order
+            }
+
+            // Process the reassembled message
+            process_data(&full_message, &vec![]).await?;
+
+            // Remove tracking entries
+            received_lengths.remove(&message_id);
+            waiting_for_chunks.remove(&message_id);
         }
     }
 }
+
 
 async fn process_data(data: &[u8], ss_ips: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     println!("Processing reassembled data of size: {}", data.len());
@@ -268,34 +277,34 @@ async fn process_data(data: &[u8], ss_ips: &[String]) -> Result<(), Box<dyn std:
     // (e.g., deserialize it and perform the desired action)
 
     let start = std::time::Instant::now();
-    let archived = unsafe {rkyv::access_unchecked::<ArchivedSignMerkleTreeRequest>(data)};
+    let archived = unsafe { rkyv::access_unchecked::<ArchivedSignMerkleTreeRequest>(data) };
     //let sign_merkle_tree_request = rkyv::deserialize::<ArchivedSignMerkleTreeRequest, rancor::Error>(archived).unwrap();
     let elapsed_time = start.elapsed();
     println!("Deserialized {} bytes in {:.2?}", data.len(), elapsed_time);
     println!("Received sign_merkle_tree_request with {} txs", archived.txs.len());
 
     output_current_time("Received sign_merkle_tree_request");
-/*
-    let start = Instant::now();
-    let hashes = archived.txs
-        .par_iter()
-        .map(|tx| keccak(&tx.0).into())
-        .collect::<Vec<[u8; 32]>>();
-    let duration = start.elapsed();
-    println!("Hashing of txs: {:?}", duration);
+    /*
+        let start = Instant::now();
+        let hashes = archived.txs
+            .par_iter()
+            .map(|tx| keccak(&tx.0).into())
+            .collect::<Vec<[u8; 32]>>();
+        let duration = start.elapsed();
+        println!("Hashing of txs: {:?}", duration);
 
-    let start = Instant::now();
-    let mt = MerkleTree::<Keccak256>::from_leaves(&hashes);
-    let duration = start.elapsed();
-    println!("Build MerkleTree: {:?}", duration);
+        let start = Instant::now();
+        let mt = MerkleTree::<Keccak256>::from_leaves(&hashes);
+        let duration = start.elapsed();
+        println!("Build MerkleTree: {:?}", duration);
 
-    let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss_ips[0])).await?;
-    let sign_mk_response = tonic::Request::new(SignMerkleTreeResponse {
-        signature: vec![],
-        root: mt.root().unwrap().to_vec(),
-    });
-    client.handle_sign_merkle_tree_response(sign_mk_response).await?;
-*/
+        let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss_ips[0])).await?;
+        let sign_mk_response = tonic::Request::new(SignMerkleTreeResponse {
+            signature: vec![],
+            root: mt.root().unwrap().to_vec(),
+        });
+        client.handle_sign_merkle_tree_response(sign_mk_response).await?;
+    */
     Ok(())
 }
 
