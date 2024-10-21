@@ -77,6 +77,12 @@ impl Hasher for Keccak256 {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RetransmissionRequest {
+    pub message_id: u32,
+    pub missing_chunks: Vec<u32>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

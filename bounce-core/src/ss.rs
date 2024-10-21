@@ -1,8 +1,8 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
 use std::sync::Arc;
 use communication::{ss_service_server::{SsService, SsServiceServer}, Start, Response as GrpcResponse, SignMerkleTreeResponse};
-use bounce_core::types::{Transaction, SignMerkleTreeRequest, State, Keccak256};
+use bounce_core::types::{Transaction, SignMerkleTreeRequest, State, Keccak256, RetransmissionRequest};
 use bounce_core::config::Config;
 use bounce_core::common::*;
 use bounce_core::{ResetId, SlotId};
@@ -274,7 +274,7 @@ impl SS {
 
     pub async fn send_sign_merkle_tree_request_multicast(&self, sign_merkle_tree_request:&SignMerkleTreeRequest) -> std::io::Result<Duration> {
         const MAX_UDP_PACKET_SIZE: usize = 65_507; // Maximum safe UDP packet size
-        const CHUNK_SIZE: usize = 65_400; // Allowing room for headers
+        const CHUNK_SIZE: usize = 8180;
 
         let socket = UdpSocket::bind("0.0.0.0:0").await?;
         let std_socket = socket.into_std()?;
@@ -296,6 +296,7 @@ impl SS {
         let data_len = serialized_data.len();
         println!("Data length: {}", data_len);
         let num_chunks = (data_len + CHUNK_SIZE - 1) / CHUNK_SIZE; // Calculate how many chunks
+        let mut sent_chunks: HashMap<u32, Vec<u8>> = HashMap::new(); // Store chunks for potential retransmission
 
         //let mut join_set = JoinSet::new();
         let message_id:u32 = random();
@@ -321,6 +322,7 @@ impl SS {
                     eprintln!("Failed to send chunk {}/{}: {:?}", sequence_number + 1, total_chunks, e);
                 } else {
                     //println!("Sent chunk {}/{}", sequence_number + 1, total_chunks);
+                    sent_chunks.insert(sequence_number, chunk);
                 }
             //});
         }
@@ -332,7 +334,46 @@ impl SS {
         // let elapsed = start.elapsed();
         println!("Sent all chunks in {:?}", elapsed);
 
+        listen_for_retransmission_requests(socket, message_id, sent_chunks, &multicast_socket_addr).await;
+
+
         Ok(elapsed)
+    }
+}
+
+async fn listen_for_retransmission_requests(
+    socket: UdpSocket,
+    message_id: u32,
+    sent_chunks: HashMap<u32, Vec<u8>>,
+    multicast_socket_addr: &SocketAddr,
+) {
+    let mut buffer = vec![0u8; 1024];
+
+    loop {
+        // Listen for retransmission requests
+        if let Ok((len, _src_addr)) = socket.recv_from(&mut buffer).await {
+            if let Ok(retransmission_request) = bincode::deserialize::<RetransmissionRequest>(&buffer[..len]) {
+                if retransmission_request.message_id == message_id {
+                    println!("Received retransmission request for chunks: {:?}", retransmission_request.missing_chunks);
+
+                    // Resend the requested chunks
+                    for chunk_num in retransmission_request.missing_chunks {
+                        if let Some(chunk) = sent_chunks.get(&chunk_num) {
+                            let header = (message_id, chunk_num, sent_chunks.len() as u32); // Reuse message_id and chunk info
+                            let mut packet = bincode::serialize(&header).unwrap();
+                            packet.extend_from_slice(&chunk);
+
+                            // Resend the chunk
+                            if let Err(e) = socket.send_to(&packet, multicast_socket_addr).await {
+                                eprintln!("Failed to resend chunk {}: {:?}", chunk_num, e);
+                            } else {
+                                println!("Resent chunk {}", chunk_num);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
