@@ -224,6 +224,7 @@ pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn s
                         };
 
                         let serialized_request = bincode::serialize(&retransmission_request).unwrap();
+                        println!("request len: {}", serialized_request.len());
                         socket.send_to(&serialized_request, message_sender_addr[&message_id]).await?;
                     }
                 }
