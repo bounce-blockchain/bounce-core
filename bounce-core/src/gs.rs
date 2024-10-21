@@ -176,7 +176,7 @@ pub async fn run_listener(addr: SocketAddr, ss_ips: Vec<String>) {
 
 pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     const MAX_UDP_PACKET_SIZE: usize = 65_507;
-    const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
+    const TIMEOUT_DURATION: Duration = Duration::from_millis(50);
 
     let multicast_addr: Ipv4Addr = "239.255.0.1".parse().unwrap();
     let port = 3102;
