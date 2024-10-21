@@ -238,6 +238,8 @@ pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn s
         // Store the sender address for retransmission requests
         message_sender_addr.insert(message_id, src_addr);
 
+        println!("Received chunk {} of message {} with {} bytes from {}", sequence_number, message_id, chunk.len(), src_addr);
+
         // Initialize storage for fragments if this is the first chunk of the message
         let entry = message_fragments.entry(message_id).or_insert_with(|| vec![None; total_chunks as usize]);
 
