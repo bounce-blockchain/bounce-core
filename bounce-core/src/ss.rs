@@ -354,7 +354,7 @@ async fn listen_for_retransmission_requests(
         println!("Listening for retransmission requests...");
         if let Ok((len, _src_addr)) = socket.recv_from(&mut buffer).await {
             println!("Received retransmission request, len: {}", len);
-            if let Ok(retransmission_request) = bincode::deserialize::<RetransmissionRequest>(&buffer[..len]) {
+            if let Ok(retransmission_request) = bincode::deserialize::<RetransmissionRequest>(&buffer) {
                 if retransmission_request.message_id == message_id {
                     println!("Received retransmission request for chunks: {:?}", retransmission_request.missing_chunks);
 
@@ -377,9 +377,8 @@ async fn listen_for_retransmission_requests(
                     eprintln!("Received retransmission request for unknown message_id: {}", retransmission_request.message_id);
                 }
             } else {
-                eprintln!("Failed to deserialize retransmission request");
-                let error = bincode::deserialize::<String>(&buffer[..len]).unwrap();
-                eprintln!("Error: {}", error);
+                let result = bincode::deserialize::<String>(&buffer);
+                eprintln!("Failed to deserialize retransmission request: {:?}", result);
             }
         } else {
             eprintln!("Failed to receive retransmission request");
