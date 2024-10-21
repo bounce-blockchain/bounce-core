@@ -176,7 +176,7 @@ pub async fn run_listener(addr: SocketAddr, ss_ips: Vec<String>) {
 
 pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     const MAX_UDP_PACKET_SIZE: usize = 65_507;
-    const TIMEOUT_DURATION: Duration = Duration::from_secs(2);  // Timeout for retransmission
+    const TIMEOUT_DURATION: Duration = Duration::from_millis(100);
 
     let multicast_addr: Ipv4Addr = "239.255.0.1".parse().unwrap();
     let port = 3102;
@@ -268,6 +268,16 @@ pub async fn run_listener_multicast(ss_ips: Vec<String>) -> Result<(), Box<dyn s
             // Remove tracking entries
             received_lengths.remove(&message_id);
             waiting_for_chunks.remove(&message_id);
+            message_sender_addr.remove(&message_id);
+
+            // Send an acknowledgment to the sender
+            let response = RetransmissionRequest {
+                message_id,
+                missing_chunks: vec![],
+            };
+            let ack = bincode::serialize(&response).unwrap();
+            socket.send_to(&ack, src_addr).await?;
+
         }
     }
 }

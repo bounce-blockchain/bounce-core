@@ -357,6 +357,10 @@ async fn listen_for_retransmission_requests(
             if let Ok(retransmission_request) = bincode::deserialize::<RetransmissionRequest>(&buffer[..len]) {
                 if retransmission_request.message_id == message_id {
                     println!("Received retransmission request for chunks: {:?}", retransmission_request.missing_chunks);
+                    if retransmission_request.missing_chunks.is_empty() {
+                        println!("All chunks received");
+                        break;
+                    }
 
                     // Resend the requested chunks
                     for chunk_num in retransmission_request.missing_chunks {
