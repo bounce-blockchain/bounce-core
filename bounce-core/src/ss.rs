@@ -347,7 +347,7 @@ async fn listen_for_retransmission_requests(
     sent_chunks: HashMap<u32, Vec<u8>>,
     multicast_socket_addr: &SocketAddr,
 ) {
-    let mut buffer = vec![0u8; 1024];
+    let mut buffer = vec![0u8; 65536];
 
     loop {
         // Listen for retransmission requests
