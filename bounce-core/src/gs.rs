@@ -133,7 +133,15 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
             gossip_join_set.spawn({
                 async move {
                     let mut socket = TcpStream::connect(format!("{}:3100", gs_ip)).await.unwrap();
-                    socket.write_all(&sharable_data).await.unwrap();
+                    match socket.write_all(&sharable_data).await {
+                        Ok(_) => {
+                            println!("Sent {} bytes to {}", sharable_data.len(), gs_ip);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to write to socket: {:?}", e);
+                        }
+                    }
+                    drop(socket);
                 }
             });
         }
