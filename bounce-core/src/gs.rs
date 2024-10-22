@@ -211,6 +211,7 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let mut gs_ips = config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
     let my_ip = gs_ips[index].clone();
     gs_ips.insert(0, "dummy".to_string());
+    gs_ips.insert(1, "dummy".to_string());
     let mut gs_map: HashMap<String, HashSet<String>> = HashMap::new();
     for (i, gs) in gs_ips.iter().enumerate() {
         if i == 0 {
