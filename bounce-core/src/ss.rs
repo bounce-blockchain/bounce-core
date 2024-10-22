@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 use std::env;
+use std::fmt::format;
 use std::sync::Arc;
 use communication::{ss_service_server::{SsService, SsServiceServer}, Start, Response as GrpcResponse, SignMerkleTreeResponse};
 use bounce_core::types::{Transaction, SignMerkleTreeRequest, State, Keccak256};
@@ -108,13 +109,15 @@ impl SsService for SSLockService {
         let mut durations = Vec::new();
         let mut total_times = Vec::new();
         for i in 0..20 {
-            println!("SS is sending sign_merkle_tree_request {}", i);
+            output_current_time(&format!("SS is sending sign_merkle_tree_request {}", i));
             let start = std::time::Instant::now();
             let duration = ss.send_sign_merkle_tree_request(&sign_merkle_tree_request).await.expect("Failed to send transactions");
             let elapsed = start.elapsed();
             println!("sign_merkle_tree_request {} sent. Total Time: {:?}", i, elapsed);
             durations.push(duration);
             total_times.push(elapsed);
+
+            tokio::time::sleep(Duration::from_secs(5)).await;
         }
 
         let avg = average_duration(&durations);
