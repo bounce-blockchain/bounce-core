@@ -178,7 +178,7 @@ pub async fn run_listener(addr: SocketAddr, ss_ips: Vec<String>, gs_map: HashMap
                 let ss_ips = ss_ips.clone();
                 let gs_map = gs_map.clone();
                 let my_ip = my_ip.clone();
-                task::spawn(async move {
+                task::spawn_blocking(async move {
                     if let Err(e) = handle_connection(socket, ss_ips, gs_map, my_ip).await {
                         eprintln!("Failed to handle connection: {:?}", e);
                     }
@@ -210,7 +210,6 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let ss_ips = config.ss.iter().map(|ss| ss.ip.clone()).collect::<Vec<String>>();
     let mut gs_ips = config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
     let my_ip = gs_ips[index].clone();
-    gs_ips.sort();
     gs_ips.insert(0, "dummy".to_string());
     let mut gs_map: HashMap<String, HashSet<String>> = HashMap::new();
     for (i, gs) in gs_ips.iter().enumerate() {
