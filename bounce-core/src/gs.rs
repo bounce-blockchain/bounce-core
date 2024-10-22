@@ -178,7 +178,7 @@ pub async fn run_listener(addr: SocketAddr, ss_ips: Vec<String>, gs_map: HashMap
                 let ss_ips = ss_ips.clone();
                 let gs_map = gs_map.clone();
                 let my_ip = my_ip.clone();
-                task::spawn_blocking(async move {
+                task::spawn(async move {
                     if let Err(e) = handle_connection(socket, ss_ips, gs_map, my_ip).await {
                         eprintln!("Failed to handle connection: {:?}", e);
                     }
