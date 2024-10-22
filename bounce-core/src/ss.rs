@@ -108,13 +108,16 @@ impl SsService for SSLockService {
         let mut durations = Vec::new();
         let mut total_times = Vec::new();
         for i in 0..1 {
-            println!("SS is sending sign_merkle_tree_request {}", i);
+            output_current_time(&format!("SS is sending sign_merkle_tree_request {}", i));
             let start = std::time::Instant::now();
             let duration = ss.send_sign_merkle_tree_request(&sign_merkle_tree_request).await.expect("Failed to send transactions");
             let elapsed = start.elapsed();
             println!("sign_merkle_tree_request {} sent. Total Time: {:?}", i, elapsed);
             durations.push(duration);
             total_times.push(elapsed);
+
+            //sleep for 5 second
+            tokio::time::sleep(Duration::from_secs(5)).await;
         }
 
         let avg = average_duration(&durations);
