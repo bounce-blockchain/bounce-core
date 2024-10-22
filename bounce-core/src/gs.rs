@@ -117,18 +117,22 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
 
     output_current_time(&format!("Received {} bytes from a client", buffer.len()));
 
-    println!("Gossiping to other GSs: {:?}", gs_map.get(&my_ip));
-    let start = std::time::Instant::now();
-    let sharable_data = buffer.clone();
-    let elapsed_time = start.elapsed();
-    println!("Cloned {} bytes in {:.2?}", sharable_data.len(), elapsed_time);
-    let start = std::time::Instant::now();
-    for gs_ip in gs_map.get(&my_ip).unwrap() {
-        let mut socket = TcpStream::connect(format!("{}:3100", gs_ip)).await?;
-        socket.write_all(&sharable_data).await?;
+    let gs_peers = gs_map.get(&my_ip).unwrap();
+    if gs_peers.len() > 0 {
+        println!("Gossiping to other GSs: {:?}", gs_map.get(&my_ip));
+        let start = std::time::Instant::now();
+        let sharable_data = buffer.clone();
+        let elapsed_time = start.elapsed();
+        println!("Cloned {} bytes in {:.2?}", sharable_data.len(), elapsed_time);
+        let start = std::time::Instant::now();
+        for gs_ip in gs_map.get(&my_ip).unwrap() {
+            let mut socket = TcpStream::connect(format!("{}:3100", gs_ip)).await?;
+            socket.write_all(&sharable_data).await?;
+        }
+        let elapsed_time = start.elapsed();
+        println!("Gossiped to other GSs in {:.2?}", elapsed_time);
     }
-    let elapsed_time = start.elapsed();
-    println!("Gossiped to other GSs in {:.2?}", elapsed_time);
+
     let start = std::time::Instant::now();
     let decompressed = zstd::stream::decode_all(Cursor::new(buffer)).unwrap();
     let elapsed_time = start.elapsed();
@@ -214,7 +218,7 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     gs_ips.insert(1, "dummy".to_string());
     let mut gs_map: HashMap<String, HashSet<String>> = HashMap::new();
     for (i, gs) in gs_ips.iter().enumerate() {
-        if i == 0 {
+        if i < 2 {
             continue;
         }
         let mut set = HashSet::new();
