@@ -231,10 +231,10 @@ impl SS {
 
         let sharable_data = Arc::new(compressed_data);
 
-        let mut gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
+        let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
 
         let mut join_set = JoinSet::new();
-        for gs_ip in &gs_ips[0..std::cmp::min(3, gs_ips.len())] {
+        for gs_ip in gs_ips {
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
             let sharable_data = Arc::clone(&sharable_data);

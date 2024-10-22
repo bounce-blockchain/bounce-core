@@ -117,18 +117,6 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
 
     output_current_time(&format!("Received {} bytes from a client", buffer.len()));
 
-    println!("Gossiping to other GSs: {:?}", gs_map.get(&my_ip));
-    let start = std::time::Instant::now();
-    let sharable_data = buffer.clone();
-    let elapsed_time = start.elapsed();
-    println!("Cloned {} bytes in {:.2?}", sharable_data.len(), elapsed_time);
-    let start = std::time::Instant::now();
-    for gs_ip in gs_map.get(&my_ip).unwrap() {
-        let mut socket = TcpStream::connect(format!("{}:3100", gs_ip)).await?;
-        socket.write_all(&sharable_data).await?;
-    }
-    let elapsed_time = start.elapsed();
-    println!("Gossiped to other GSs in {:.2?}", elapsed_time);
     let start = std::time::Instant::now();
     let decompressed = zstd::stream::decode_all(Cursor::new(buffer)).unwrap();
     let elapsed_time = start.elapsed();
@@ -212,23 +200,6 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let my_ip = gs_ips[index].clone();
     gs_ips.insert(0, "dummy".to_string());
     let mut gs_map: HashMap<String, HashSet<String>> = HashMap::new();
-    for (i, gs) in gs_ips.iter().enumerate() {
-        if i == 0 {
-            continue;
-        }
-        let mut set = HashSet::new();
-        if i * 3 - 1 < gs_ips.len() {
-            set.insert(gs_ips[i * 3 - 1].clone());
-        }
-        if i * 3 < gs_ips.len() {
-            set.insert(gs_ips[i * 3].clone());
-        }
-        if i * 3 + 1 < gs_ips.len() {
-            set.insert(gs_ips[i * 3 + 1].clone());
-        }
-        gs_map.insert(gs.clone(), set);
-    }
-    println!("GS map: {:?}", gs_map);
     for port in ports {
         let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
         tasks.push(task::spawn(run_listener(addr, ss_ips.clone(), gs_map.clone(), my_ip.clone())));
