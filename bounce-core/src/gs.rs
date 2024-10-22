@@ -59,11 +59,9 @@ impl GsService for GSLockService {
 
         Ok(Response::new(reply))
     }
-
 }
 
 impl GS {
-
     pub fn new(config: Config, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>) -> Self {
         GS {
             config,
@@ -91,10 +89,10 @@ impl GS {
     }
 }
 
-pub async fn handle_connection<'a>(mut socket: TcpStream, ss_ips:Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_map: HashMap<String, HashSet<String>>, my_ip: String) -> Result<(), Box<dyn std::error::Error>> {
     // Buffer for incoming data
     let mut buffer = Vec::new();
-    let mut chunk = vec![0u8; 2*1024*1024]; // Read in 2 MB chunks
+    let mut chunk = vec![0u8; 2 * 1024 * 1024]; // Read in 2 MB chunks
 
     let start = std::time::Instant::now();
     loop {
@@ -119,6 +117,18 @@ pub async fn handle_connection<'a>(mut socket: TcpStream, ss_ips:Vec<String>) ->
 
     output_current_time(&format!("Received {} bytes from a client", buffer.len()));
 
+    println!("Gossiping to other GSs: {:?}", gs_map.get(&my_ip));
+    let start = std::time::Instant::now();
+    let sharable_data = buffer.clone();
+    let elapsed_time = start.elapsed();
+    println!("Cloned {} bytes in {:.2?}", sharable_data.len(), elapsed_time);
+    let start = std::time::Instant::now();
+    for gs_ip in gs_map.get(&my_ip).unwrap() {
+        let mut socket = TcpStream::connect(format!("{}:3100", gs_ip)).await?;
+        socket.write_all(&sharable_data).await?;
+    }
+    let elapsed_time = start.elapsed();
+    println!("Gossiped to other GSs in {:.2?}", elapsed_time);
     let start = std::time::Instant::now();
     let decompressed = zstd::stream::decode_all(Cursor::new(buffer)).unwrap();
     let elapsed_time = start.elapsed();
@@ -157,7 +167,7 @@ pub async fn handle_connection<'a>(mut socket: TcpStream, ss_ips:Vec<String>) ->
     Ok(())
 }
 
-pub async fn run_listener(addr: SocketAddr, ss_ips: Vec<String>) {
+pub async fn run_listener(addr: SocketAddr, ss_ips: Vec<String>, gs_map: HashMap<String, HashSet<String>>, my_ip: String) {
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
     println!("Server listening on {}", addr);
 
@@ -166,8 +176,10 @@ pub async fn run_listener(addr: SocketAddr, ss_ips: Vec<String>) {
             Ok((socket, _)) => {
                 println!("Accepted connection from: {}", socket.peer_addr().unwrap());
                 let ss_ips = ss_ips.clone();
-                task::spawn(async move{
-                    if let Err(e) = handle_connection(socket, ss_ips).await {
+                let gs_map = gs_map.clone();
+                let my_ip = my_ip.clone();
+                task::spawn(async move {
+                    if let Err(e) = handle_connection(socket, ss_ips, gs_map, my_ip).await {
                         eprintln!("Failed to handle connection: {:?}", e);
                     }
                 });
@@ -196,9 +208,30 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
 
     // Start a ss listener on each port
     let ss_ips = config.ss.iter().map(|ss| ss.ip.clone()).collect::<Vec<String>>();
+    let mut gs_ips = config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
+    let my_ip = gs_ips[index].clone();
+    gs_ips.sort();
+    gs_ips.insert(0, "dummy".to_string());
+    let mut gs_map: HashMap<String, HashSet<String>> = HashMap::new();
+    for (i, gs) in gs_ips.iter().enumerate() {
+        if i == 0 {
+            continue;
+        }
+        let mut set = HashSet::new();
+        if i * 3 - 1 < gs_ips.len() {
+            set.insert(gs_ips[i * 3 - 1].clone());
+        }
+        if i * 3 < gs_ips.len() {
+            set.insert(gs_ips[i * 3].clone());
+        }
+        if i * 3 + 1 < gs_ips.len() {
+            set.insert(gs_ips[i * 3 + 1].clone());
+        }
+        gs_map.insert(gs.clone(), set);
+    }
     for port in ports {
         let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
-        tasks.push(task::spawn(run_listener(addr, ss_ips.clone())));
+        tasks.push(task::spawn(run_listener(addr, ss_ips.clone(), gs_map.clone(), my_ip.clone())));
     }
 
     Server::builder()

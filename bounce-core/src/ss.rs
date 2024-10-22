@@ -107,7 +107,7 @@ impl SsService for SSLockService {
 
         let mut durations = Vec::new();
         let mut total_times = Vec::new();
-        for i in 0..10 {
+        for i in 0..20 {
             println!("SS is sending sign_merkle_tree_request {}", i);
             let start = std::time::Instant::now();
             let duration = ss.send_sign_merkle_tree_request(&sign_merkle_tree_request).await.expect("Failed to send transactions");
@@ -235,7 +235,7 @@ impl SS {
         gs_ips.sort();
 
         let mut join_set = JoinSet::new();
-        for gs_ip in gs_ips {
+        for gs_ip in &gs_ips[0..std::cmp::min(3, gs_ips.len())] {
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
             let sharable_data = Arc::clone(&sharable_data);
