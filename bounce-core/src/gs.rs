@@ -228,6 +228,7 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
         }
         gs_map.insert(gs.clone(), set);
     }
+    println!("GS map: {:?}", gs_map);
     for port in ports {
         let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
         tasks.push(task::spawn(run_listener(addr, ss_ips.clone(), gs_map.clone(), my_ip.clone())));
