@@ -17,6 +17,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 use tokio::task;
+use tokio::task::JoinSet;
 use bls::min_pk::{PublicKey, SecretKey};
 use key_manager::keyloader;
 
@@ -118,19 +119,26 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
     output_current_time(&format!("Received {} bytes from a client", buffer.len()));
 
     let gs_peers = gs_map.get(&my_ip).unwrap();
+    let mut gossip_join_set = JoinSet::new();
     if gs_peers.len() > 0 {
         println!("Gossiping to other GSs: {:?}", gs_map.get(&my_ip));
         let start = std::time::Instant::now();
-        let sharable_data = buffer.clone();
+        let sharable_data = Arc::new(buffer.clone());
         let elapsed_time = start.elapsed();
         println!("Cloned {} bytes in {:.2?}", sharable_data.len(), elapsed_time);
         let start = std::time::Instant::now();
         for gs_ip in gs_map.get(&my_ip).unwrap() {
-            let mut socket = TcpStream::connect(format!("{}:3100", gs_ip)).await?;
-            socket.write_all(&sharable_data).await?;
+            let sharable_data = sharable_data.clone();
+            let gs_ip = gs_ip.clone();
+            gossip_join_set.spawn({
+                async move {
+                    let mut socket = TcpStream::connect(format!("{}:3100", gs_ip)).await.unwrap();
+                    socket.write_all(&sharable_data).await.unwrap();
+                }
+            });
         }
         let elapsed_time = start.elapsed();
-        println!("Gossiped to other GSs in {:.2?}", elapsed_time);
+        println!("Spawned threads to gossip to other GSs in {:.2?}", elapsed_time);
     }
 
     let start = std::time::Instant::now();
@@ -167,6 +175,11 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
         root: mt.root().unwrap().to_vec(),
     });
     client.handle_sign_merkle_tree_response(sign_mk_response).await?;
+
+    let start = Instant::now();
+    gossip_join_set.join_all().await;
+    let duration = start.elapsed();
+    println!("Gossiping to other GSs: {:?}", duration);
 
     Ok(())
 }
