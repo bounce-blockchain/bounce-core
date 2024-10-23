@@ -7,7 +7,7 @@ use bounce_core::config::Config;
 use rayon::prelude::*;
 use tokio::runtime::Runtime;
 use std::env;
-use std::io::Cursor;
+//use std::io::Cursor;
 use std::net::{SocketAddr};
 use std::sync::Arc;
 use std::time::Instant;
@@ -122,7 +122,7 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
 
     let gs_peers = gs_map.get(&my_ip).unwrap();
     let mut gossip_join_set = JoinSet::new();
-    if gs_peers.len() > 0 {
+    if !gs_peers.is_empty() {
         println!("Gossiping to other GSs: {:?}", gs_map.get(&my_ip));
         let start = std::time::Instant::now();
         for gs_ip in gs_map.get(&my_ip).unwrap() {

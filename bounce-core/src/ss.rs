@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, HashSet};
 use std::env;
-use std::fmt::format;
 use std::sync::Arc;
 use communication::{ss_service_server::{SsService, SsServiceServer}, Start, Response as GrpcResponse, SignMerkleTreeResponse};
 use bounce_core::types::{Transaction, SignMerkleTreeRequest, State, Keccak256};
@@ -47,7 +46,7 @@ fn median_duration(mut durations: Vec<Duration>) -> Duration {
     }
 }
 
-fn confidence_interval_90(durations: &mut Vec<Duration>) -> (Duration, Duration) {
+fn confidence_interval_90(durations: &mut [Duration]) -> (Duration, Duration) {
     durations.sort();
 
     let len = durations.len();

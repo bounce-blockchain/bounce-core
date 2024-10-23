@@ -39,7 +39,7 @@ fn main() {
         println!("Build MerkleTree with {} of hashes: {:?}", 10_usize.pow(i), duration);
     }
     let start = Instant::now();
-    let mt = MerkleTree::<Keccak256>::from_leaves(&hashes);
+    MerkleTree::<Keccak256>::from_leaves(&hashes);
     let duration = start.elapsed();
     println!("Build MerkleTree with {} of hashes: {:?}", total_txs, duration);
 }

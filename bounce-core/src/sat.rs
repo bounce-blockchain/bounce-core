@@ -77,7 +77,7 @@ impl Sat {
         self.ground_station_public_keys = start.ground_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
         self.sending_station_public_keys = start.sending_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
         self.slot_assignments = start.satellite_slot_assignments.iter().map(|(slot_id, pk)| {
-            (slot_id.clone(), PublicKey::from_bytes(&pk.value).unwrap())
+            (*slot_id, PublicKey::from_bytes(&pk.value).unwrap())
         }).collect();
 
         self.f = start.f;

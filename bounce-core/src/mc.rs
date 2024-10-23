@@ -47,7 +47,7 @@ impl MC {
     ) -> Self {
 
         MC {
-            secret_keys: secret_keys,
+            secret_keys,
             state: State::Inactive,
             reset_id: 0,
             f: ground_station_public_keys.len() as u32 - 1,
@@ -85,10 +85,10 @@ impl MC {
 
         let sending_station_slot_assignments_for_start = sending_station_slot_assignments.iter().map(|(slot_id, pks)| {
             let public_keys = pks.iter().map(|pk| communication::PublicKey { value: Vec::from(pk.to_bytes()) }).collect();
-            (slot_id.clone(), communication::PublicKeyList { public_keys })
+            (*slot_id, communication::PublicKeyList { public_keys })
         }).collect();
         let satellite_slot_assignments_for_start = satellite_slot_assignments.iter().map(|(slot_id, pk)| {
-            (slot_id.clone(), communication::PublicKey { value: Vec::from(pk.to_bytes()) })
+            (*slot_id, communication::PublicKey { value: Vec::from(pk.to_bytes()) })
         }).collect();
 
         let start = Start {
