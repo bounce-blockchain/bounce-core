@@ -124,10 +124,6 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
     let mut gossip_join_set = JoinSet::new();
     if gs_peers.len() > 0 {
         println!("Gossiping to other GSs: {:?}", gs_map.get(&my_ip));
-        // let start = std::time::Instant::now();
-        // let sharable_data = Arc::new(buffer.clone());
-        // let elapsed_time = start.elapsed();
-        // println!("Cloned {} bytes in {:.2?}", sharable_data.len(), elapsed_time);
         let start = std::time::Instant::now();
         for gs_ip in gs_map.get(&my_ip).unwrap() {
             let sharable_data = shared_buffer.clone();

@@ -235,7 +235,7 @@ impl SS {
 
         let sharable_data = Arc::new(serialized_data);
 
-        let mut gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
+        let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
 
         let mut join_set = JoinSet::new();
         for gs_ip in &gs_ips[0..std::cmp::min(3, gs_ips.len())] {
