@@ -225,14 +225,14 @@ impl SS {
         let elapsed = start.elapsed();
         println!("Serialized sign_merkle_tree_request in {:?}", elapsed);
 
-        let cursor = std::io::Cursor::new(serialized_data);
+        // let cursor = std::io::Cursor::new(serialized_data);
+        //
+        // let start = std::time::Instant::now();
+        // let compressed_data = zstd::stream::encode_all(cursor, -22).unwrap();
+        // let elapsed = start.elapsed();
+        // println!("Compressed sign_merkle_tree_request in {:?}", elapsed);
 
-        let start = std::time::Instant::now();
-        let compressed_data = zstd::stream::encode_all(cursor, -22).unwrap();
-        let elapsed = start.elapsed();
-        println!("Compressed sign_merkle_tree_request in {:?}", elapsed);
-
-        let sharable_data = Arc::new(compressed_data);
+        let sharable_data = Arc::new(serialized_data);
 
         let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
 
