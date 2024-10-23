@@ -225,6 +225,7 @@ impl SS {
         let elapsed = start.elapsed();
         println!("Serialized sign_merkle_tree_request in {:?}", elapsed);
 
+        // Do compression when network is slow
         // let cursor = std::io::Cursor::new(serialized_data);
         //
         // let start = std::time::Instant::now();
@@ -237,7 +238,7 @@ impl SS {
         let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
 
         let mut join_set = JoinSet::new();
-        for gs_ip in gs_ips {
+        for gs_ip in &gs_ips[0..std::cmp::min(3, gs_ips.len())] {
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
             let sharable_data = Arc::clone(&sharable_data);

@@ -17,6 +17,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 use tokio::task;
+use tokio::task::JoinSet;
 use bls::min_pk::{PublicKey, SecretKey};
 use key_manager::keyloader;
 
@@ -117,16 +118,45 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
 
     output_current_time(&format!("Received {} bytes from a client", buffer.len()));
 
+    let shared_buffer = Arc::new(buffer);
+
+    let gs_peers = gs_map.get(&my_ip).unwrap();
+    let mut gossip_join_set = JoinSet::new();
+    if gs_peers.len() > 0 {
+        println!("Gossiping to other GSs: {:?}", gs_map.get(&my_ip));
+        let start = std::time::Instant::now();
+        for gs_ip in gs_map.get(&my_ip).unwrap() {
+            let sharable_data = shared_buffer.clone();
+            let gs_ip = gs_ip.clone();
+            gossip_join_set.spawn({
+                async move {
+                    let mut socket = TcpStream::connect(format!("{}:3100", gs_ip)).await.unwrap();
+                    match socket.write_all(&sharable_data).await {
+                        Ok(_) => {
+                            println!("Sent {} bytes to {}", sharable_data.len(), gs_ip);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to write to socket: {:?}", e);
+                        }
+                    }
+                    drop(socket);
+                }
+            });
+        }
+        let elapsed_time = start.elapsed();
+        println!("Spawned threads to gossip to other GSs in {:.2?}", elapsed_time);
+    }
+
     // let start = std::time::Instant::now();
-    // let decompressed = zstd::stream::decode_all(Cursor::new(buffer)).unwrap();
+    // let decompressed = zstd::stream::decode_all(Cursor::new(&**shared_buffer)).unwrap();
     // let elapsed_time = start.elapsed();
     // println!("Decompressed {} bytes in {:.2?}", decompressed.len(), elapsed_time);
 
     let start = std::time::Instant::now();
-    let archived = unsafe { rkyv::access_unchecked::<ArchivedSignMerkleTreeRequest>(&buffer) };
+    let archived = unsafe { rkyv::access_unchecked::<ArchivedSignMerkleTreeRequest>(&shared_buffer) };
     //let sign_merkle_tree_request = rkyv::deserialize::<ArchivedSignMerkleTreeRequest, rancor::Error>(archived).unwrap();
     let elapsed_time = start.elapsed();
-    println!("Deserialized {} bytes in {:.2?}", buffer.len(), elapsed_time);
+    println!("Deserialized {} bytes in {:.2?}", shared_buffer.len(), elapsed_time);
     println!("Received sign_merkle_tree_request with {} txs", archived.txs.len());
 
     output_current_time("Received sign_merkle_tree_request");
@@ -151,6 +181,11 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
         root: mt.root().unwrap().to_vec(),
     });
     client.handle_sign_merkle_tree_response(sign_mk_response).await?;
+
+    let start = Instant::now();
+    gossip_join_set.join_all().await;
+    let duration = start.elapsed();
+    println!("Gossiping to other GSs: {:?}", duration);
 
     Ok(())
 }
@@ -199,7 +234,25 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let mut gs_ips = config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
     let my_ip = gs_ips[index].clone();
     gs_ips.insert(0, "dummy".to_string());
+    gs_ips.insert(1, "dummy".to_string());
     let mut gs_map: HashMap<String, HashSet<String>> = HashMap::new();
+    for (i, gs) in gs_ips.iter().enumerate() {
+        if i < 2 {
+            continue;
+        }
+        let mut set = HashSet::new();
+        if i * 3 - 1 < gs_ips.len() {
+            set.insert(gs_ips[i * 3 - 1].clone());
+        }
+        if i * 3 < gs_ips.len() {
+            set.insert(gs_ips[i * 3].clone());
+        }
+        if i * 3 + 1 < gs_ips.len() {
+            set.insert(gs_ips[i * 3 + 1].clone());
+        }
+        gs_map.insert(gs.clone(), set);
+    }
+    println!("GS map: {:?}", gs_map);
     for port in ports {
         let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
         tasks.push(task::spawn(run_listener(addr, ss_ips.clone(), gs_map.clone(), my_ip.clone())));
