@@ -118,19 +118,19 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
 
     output_current_time(&format!("Received {} bytes from a client", buffer.len()));
 
-    //let shared_buffer = Arc::new(buffer);
+    let shared_buffer = Arc::new(buffer);
 
     let gs_peers = gs_map.get(&my_ip).unwrap();
     let mut gossip_join_set = JoinSet::new();
     if gs_peers.len() > 0 {
         println!("Gossiping to other GSs: {:?}", gs_map.get(&my_ip));
-        let start = std::time::Instant::now();
-        let sharable_data = Arc::new(buffer.clone());
-        let elapsed_time = start.elapsed();
-        println!("Cloned {} bytes in {:.2?}", sharable_data.len(), elapsed_time);
+        // let start = std::time::Instant::now();
+        // let sharable_data = Arc::new(buffer.clone());
+        // let elapsed_time = start.elapsed();
+        // println!("Cloned {} bytes in {:.2?}", sharable_data.len(), elapsed_time);
         let start = std::time::Instant::now();
         for gs_ip in gs_map.get(&my_ip).unwrap() {
-            let sharable_data = sharable_data.clone();
+            let sharable_data = shared_buffer.clone();
             let gs_ip = gs_ip.clone();
             gossip_join_set.spawn({
                 async move {
@@ -152,7 +152,7 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
     }
 
     let start = std::time::Instant::now();
-    let decompressed = zstd::stream::decode_all(Cursor::new(buffer)).unwrap();
+    let decompressed = zstd::stream::decode_all(Cursor::new(&**shared_buffer)).unwrap();
     let elapsed_time = start.elapsed();
     println!("Decompressed {} bytes in {:.2?}", decompressed.len(), elapsed_time);
 
