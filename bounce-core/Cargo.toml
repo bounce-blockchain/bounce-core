@@ -7,18 +7,21 @@ edition = "2021"
 [dependencies]
 bls = { path = "../bls", features = ["proptest"] }
 bincode = { workspace = true }
-key-manager = { path = "../key-manager" }
-tonic = "0.12.3"
-serde = { workspace = true}
-tokio = { version = "1.40.0", features = ["full"] }
-prost = "0.13.3"
-toml = "0.8.19"
 keccak-hash = { workspace = true }
+key-manager = { path = "../key-manager" }
+log = { workspace = true }
+prost = "0.13.3"
 rand = { workspace = true }
 rayon = { workspace = true }
 rkyv = { workspace = true }
-rs_merkle = {workspace = true}
-log = { workspace = true }
+rs_merkle = { workspace = true }
+serde = { workspace = true }
+slot-clock = { path = "../slot-clock" }
+tonic = "0.12.3"
+tokio = { workspace = true }
+toml = "0.8.19"
+
+
 zstd = "0.13.2"
 
 [build-dependencies]
