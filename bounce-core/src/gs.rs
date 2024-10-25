@@ -161,6 +161,11 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
 
     output_current_time("Received sign_merkle_tree_request");
 
+    if archived.txs.len() == 0 {
+        log::log!(log::Level::Warn, "Received an empty sign_merkle_tree_request. Not processing.");
+        return Ok(());
+    }
+
     //process the request
     let start = Instant::now();
     let hashes = archived.txs
@@ -185,7 +190,7 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
     let start = Instant::now();
     gossip_join_set.join_all().await;
     let duration = start.elapsed();
-    println!("Gossiping to other GSs: {:?}", duration);
+    println!("Awaiting Gossiping to other GSs: {:?}", duration);
 
     Ok(())
 }
