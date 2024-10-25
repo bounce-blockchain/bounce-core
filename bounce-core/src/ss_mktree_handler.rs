@@ -5,6 +5,7 @@ use rand::Rng;
 use rkyv::rancor::Error;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
+use tokio::sync::mpsc::{UnboundedSender};
 use tokio::task::JoinSet;
 use bls::min_pk::{PublicKey, SecretKey};
 use crate::common::output_current_time;
@@ -14,18 +15,19 @@ use crate::types::{SignMerkleTreeRequest, Transaction};
 pub struct SsMerkleTreeHandler {
     pub config: Config,
     pub gs_tx_receiver_ports: Vec<u16>,
+    pub sender_to_ss: UnboundedSender<[u8; 32]>,
 
     pub secret_key: SecretKey,
     pub ground_station_public_keys: Vec<PublicKey>,
     pub f: u32,
 
     pub transactions: Vec<Transaction>,
-    pub root:[u8; 32],
+    pub root:Option<[u8; 32]>,
 }
 
 impl SsMerkleTreeHandler{
 
-    pub fn spawn(config: Config, secret_key: SecretKey, ground_station_public_keys: Vec<PublicKey>, f: u32) -> Self {
+    pub fn spawn(config: Config, secret_key: SecretKey, ground_station_public_keys: Vec<PublicKey>, f: u32, sender_to_ss: UnboundedSender<[u8; 32]>) -> Self {
         // Generate 1_000_000 random transactions to send to the Ground Station.
         // This is for benchmarking purposes.
         println!("Mktree_handler Generating 1_000_000 random transactions...");
@@ -50,13 +52,14 @@ impl SsMerkleTreeHandler{
         SsMerkleTreeHandler {
             config,
             gs_tx_receiver_ports: vec![3100],
+            sender_to_ss,
 
             secret_key,
             ground_station_public_keys,
             f,
 
             transactions: txs,
-            root: [0u8; 32],
+            root: None,
         }
     }
 
@@ -69,6 +72,8 @@ impl SsMerkleTreeHandler{
         let serialized_data = rkyv::to_bytes::<Error>(&sign_merkle_tree_request).unwrap();
         let elapsed = start.elapsed();
         println!("Serialized sign_merkle_tree_request in {:?}", elapsed);
+
+        self.root = None;
 
         // Do compression when network is slow
         // let cursor = std::io::Cursor::new(serialized_data);
@@ -128,6 +133,9 @@ impl SsMerkleTreeHandler{
     }
 
     pub async fn handle_sign_merkle_tree_response(&mut self, root: &[u8;32], vec: &[u8]) {
-        self.root = *root;
+        if self.root.is_none() {
+            self.root = Some(*root);
+            self.sender_to_ss.send(*root).unwrap();
+        }
     }
 }

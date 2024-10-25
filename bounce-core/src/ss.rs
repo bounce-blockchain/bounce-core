@@ -26,6 +26,7 @@ pub struct SS {
 
     clock_send: tokio::sync::mpsc::UnboundedSender<u64>,
     slot_receive: tokio::sync::broadcast::Receiver<SlotMessage>,
+    receiver_from_mkt_handler: tokio::sync::mpsc::UnboundedReceiver<[u8; 32]>,
 
     secret_key: SecretKey,
     state: State,
@@ -54,10 +55,11 @@ impl SsService for SSLockService {
 
         let (clock_send, clock_recv) = tokio::sync::mpsc::unbounded_channel();
         let (slot_send, mut slot_receive) = tokio::sync::broadcast::channel(9);
+        let (sender_to_ss, receiver_from_mkt_handler) = tokio::sync::mpsc::unbounded_channel();
 
         let mut ss = self.ss.write().await;
         let start = start.into_inner();
-        ss.start(start.clone(),clock_send);
+        ss.start(start.clone(),clock_send, receiver_from_mkt_handler);
 
         let ss_service = self.ss.clone();
         tokio::spawn(async move {
@@ -85,7 +87,7 @@ impl SsService for SSLockService {
             }
         });
 
-        let mut ss_mk_tree_handler = SsMerkleTreeHandler::spawn(ss.config.clone(), ss.secret_key.clone(), ss.ground_station_public_keys.clone(), ss.f);
+        let mut ss_mk_tree_handler = SsMerkleTreeHandler::spawn(ss.config.clone(), ss.secret_key.clone(), ss.ground_station_public_keys.clone(), ss.f, sender_to_ss);
         let mut mk_tree_handler_slot_receive = slot_send.subscribe();
         tokio::spawn(async move {
             loop {
@@ -142,6 +144,7 @@ impl SS {
             secret_key,
             clock_send: tokio::sync::mpsc::unbounded_channel().0,
             slot_receive: tokio::sync::broadcast::channel(1).1,
+            receiver_from_mkt_handler: tokio::sync::mpsc::unbounded_channel().1,
             ground_station_public_keys: vec![],
             mission_control_public_keys,
             f: 0,
@@ -154,7 +157,7 @@ impl SS {
         }
     }
 
-    pub fn start(&mut self, start: Start, clock_send: tokio::sync::mpsc::UnboundedSender<u64>) {
+    pub fn start(&mut self, start: Start, clock_send: tokio::sync::mpsc::UnboundedSender<u64>, receiver_from_mkt_handler: tokio::sync::mpsc::UnboundedReceiver<[u8;32]>) {
         self.state = State::Ready;
         self.ground_station_public_keys = start.ground_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
         self.slot_assignments = BTreeMap::new();
@@ -163,6 +166,7 @@ impl SS {
         }
         self.f = start.f;
         self.clock_send = clock_send;
+        self.receiver_from_mkt_handler = receiver_from_mkt_handler;
 
         println!("SS started with f: {}", self.f);
     }
@@ -171,8 +175,14 @@ impl SS {
         self.slot_id += 1;
     }
 
-    pub fn send_ss_message(&self) {
-        println!("SS senting a message to SAT");
+    pub fn send_ss_message(&mut self) {
+        let root = self.receiver_from_mkt_handler.try_recv();
+        if root.is_ok() {
+            let root = root.unwrap();
+            println!("SS is sending a msg to satellite with root {:?}", root);
+        } else {
+            println!("SS does not have a root to send");
+        }
     }
 }
 
