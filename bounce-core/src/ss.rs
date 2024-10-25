@@ -10,7 +10,6 @@ use bls::min_pk::{PublicKey, SecretKey};
 use key_manager::keyloader;
 use rayon::prelude::*;
 use rand::Rng;
-use tokio::io::{AsyncWriteExt};
 use tokio::runtime::{Runtime};
 use tokio::sync::RwLock;
 use tonic::{transport::Server, Request, Response, Status};
@@ -52,9 +51,64 @@ impl SsService for SSLockService {
         start: Request<Start>,
     ) -> Result<Response<GrpcResponse>, Status> {
         println!("SS received a Start message from MC with t: {}", start.get_ref().t);
-        let mut ss = self.ss.write().await;
 
-        ss.start(start.into_inner());
+        let (clock_send, clock_recv) = tokio::sync::mpsc::unbounded_channel();
+        let (slot_send, mut slot_receive) = tokio::sync::broadcast::channel(9);
+
+        let mut ss = self.ss.write().await;
+        let start = start.into_inner();
+        ss.start(start.clone(),clock_send);
+
+        let ss_service = self.ss.clone();
+        tokio::spawn(async move {
+            loop {
+                let slog_msg = slot_receive.recv().await;
+                match slog_msg {
+                    Ok(msg) => {
+                        println!("Received SlotMessage: {:?}", msg);
+                        match msg {
+                            SlotMessage::SlotTick => {
+                                let mut ss = ss_service.write().await;
+                                ss.handle_slot_tick();
+                            }
+                            SlotMessage::SlotThreshold1 => {}
+                            SlotMessage::SlotThreshold2 => {
+                                let mut ss = ss_service.write().await;
+                                ss.send_ss_message();
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to receive SlotMessage: {:?}", e);
+                    }
+                }
+            }
+        });
+
+        let mut ss_mk_tree_handler = SsMerkleTreeHandler::spawn(ss.config.clone(), ss.secret_key.clone(), ss.ground_station_public_keys.clone(), ss.f);
+        let mut mk_tree_handler_slot_receive = slot_send.subscribe();
+        tokio::spawn(async move {
+            loop {
+                let slog_msg = mk_tree_handler_slot_receive.recv().await;
+                match slog_msg {
+                    Ok(msg) => {
+                        println!("Received SlotMessage: {:?}", msg);
+                        if msg == SlotMessage::SlotThreshold1 {
+                            // Send the sign_merkle_tree_request
+                            ss_mk_tree_handler.send_sign_merkle_tree_request().await.unwrap();
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to receive SlotMessage: {:?}", e);
+                    }
+                }
+            }
+        });
+
+        let mut slot_timer = SlotClock::new(5000, 500, 4000, slot_send, clock_recv);
+        tokio::spawn(async move { if (slot_timer.start().await).is_err() {} });
+
+        ss.clock_send.send(start.t).unwrap();
 
         let reply = communication::Response {
             message: "SS processed the start message".to_string(),
@@ -100,7 +154,7 @@ impl SS {
         }
     }
 
-    pub fn start(&mut self, start: Start) {
+    pub fn start(&mut self, start: Start, clock_send: tokio::sync::mpsc::UnboundedSender<u64>) {
         self.state = State::Ready;
         self.ground_station_public_keys = start.ground_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
         self.slot_assignments = BTreeMap::new();
@@ -108,40 +162,18 @@ impl SS {
             self.slot_assignments.insert(*slot_id, HashSet::from_iter(public_keys.public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap())));
         }
         self.f = start.f;
-
-        let (clock_send, clock_recv) = tokio::sync::mpsc::unbounded_channel();
         self.clock_send = clock_send;
 
-        let (slot_send, slot_receive) = tokio::sync::broadcast::channel(9);
-        self.slot_receive = slot_receive;
-
-        let mut ss_mk_tree_handler = SsMerkleTreeHandler::spawn(self.config.clone(), self.secret_key.clone(), self.ground_station_public_keys.clone(), self.f);
-        let mut mk_tree_handler_slot_receive = slot_send.subscribe();
-        tokio::spawn(async move {
-            loop {
-                let slog_msg = mk_tree_handler_slot_receive.recv().await;
-                match slog_msg {
-                    Ok(msg) => {
-                        println!("Received SlotMessage: {:?}", msg);
-                        if msg == SlotMessage::SlotThreshold1 {
-                            // Send the sign_merkle_tree_request
-                            ss_mk_tree_handler.send_sign_merkle_tree_request().await.unwrap();
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to receive SlotMessage: {:?}", e);
-                    }
-                }
-            }
-        });
-
-        let mut slot_timer = SlotClock::new(5000, 500, 4000, slot_send, clock_recv);
-        tokio::spawn(async move { if (slot_timer.start().await).is_err() {} });
-
-        self.clock_send.send(start.t).unwrap();
         println!("SS started with f: {}", self.f);
     }
 
+    pub fn handle_slot_tick(&mut self) {
+        self.slot_id += 1;
+    }
+
+    pub fn send_ss_message(&self) {
+        println!("SS senting a message to SAT");
+    }
 }
 
 pub async fn run_ss(config_file: &str, index: usize) -> Result<(), Box<dyn std::error::Error>> {
