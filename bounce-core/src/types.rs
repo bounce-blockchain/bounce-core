@@ -62,6 +62,7 @@ impl AsRef<[u8]> for Transaction {
 )]
 pub struct SignMerkleTreeRequest {
     pub txs: Vec<Transaction>,
+    pub sender_ip: String,
 }
 
 #[derive(Clone,Serialize,Deserialize,Debug)]

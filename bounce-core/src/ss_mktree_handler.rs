@@ -1,19 +1,27 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use communication::{ss_merkle_tree_handler_service_server::SsMerkleTreeHandlerService, SignMerkleTreeResponse, Response as GrpcResponse};
 use rand::Rng;
 use rkyv::rancor::Error;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{UnboundedSender};
+use tokio::sync::RwLock;
 use tokio::task::JoinSet;
+use tonic::{Request, Response, Status};
 use bls::min_pk::{PublicKey, SecretKey};
 use crate::common::output_current_time;
 use crate::config::Config;
 use crate::types::{SignMerkleTreeRequest, Transaction};
 
+pub mod communication {
+    tonic::include_proto!("communication");
+}
+
 pub struct SsMerkleTreeHandler {
     pub config: Config,
+    pub my_ip: String,
     pub gs_tx_receiver_ports: Vec<u16>,
     pub sender_to_ss: UnboundedSender<[u8; 32]>,
 
@@ -25,9 +33,33 @@ pub struct SsMerkleTreeHandler {
     pub root:Option<[u8; 32]>,
 }
 
+pub struct SsMerkleTreeHandlerLockService {
+    ss_merkle_tree_handler: Arc<RwLock<SsMerkleTreeHandler>>,
+}
+
+#[tonic::async_trait]
+impl SsMerkleTreeHandlerService for SsMerkleTreeHandlerLockService {
+    async fn handle_sign_merkle_tree_response(
+        &self,
+        request: Request<SignMerkleTreeResponse>,
+    ) -> Result<Response<GrpcResponse>, Status> {
+        let request = request.into_inner();
+        let root: [u8; 32] = request.root.try_into().expect("Expected a response with root of 32 bytes");
+        let signature = request.signature;
+        let mut ss = self.ss_merkle_tree_handler.write().await;
+        ss.handle_sign_merkle_tree_response(root, signature).await;
+
+        let reply = communication::Response {
+            message: "ACK".to_string(),
+        };
+
+        Ok(Response::new(reply))
+    }
+}
+
 impl SsMerkleTreeHandler{
 
-    pub fn spawn(config: Config, secret_key: SecretKey, ground_station_public_keys: Vec<PublicKey>, f: u32, sender_to_ss: UnboundedSender<[u8; 32]>) -> Self {
+    pub fn spawn(config: Config, my_ip:String, secret_key: SecretKey, ground_station_public_keys: Vec<PublicKey>, f: u32, sender_to_ss: UnboundedSender<[u8; 32]>) -> Self {
         // Generate 1_000_000 random transactions to send to the Ground Station.
         // This is for benchmarking purposes.
         println!("Mktree_handler Generating 1_000_000 random transactions...");
@@ -51,6 +83,7 @@ impl SsMerkleTreeHandler{
 
         SsMerkleTreeHandler {
             config,
+            my_ip,
             gs_tx_receiver_ports: vec![3100],
             sender_to_ss,
 
@@ -66,6 +99,7 @@ impl SsMerkleTreeHandler{
     pub async fn send_sign_merkle_tree_request(&mut self) -> std::io::Result<Duration> {
         let sign_merkle_tree_request = SignMerkleTreeRequest {
             txs: std::mem::take(&mut self.transactions),
+            sender_ip: self.my_ip.clone(),
         };
         let first_start = std::time::Instant::now();
         let start = std::time::Instant::now();
@@ -132,10 +166,11 @@ impl SsMerkleTreeHandler{
         Ok(elapsed)
     }
 
-    pub async fn handle_sign_merkle_tree_response(&mut self, root: &[u8;32], vec: &[u8]) {
+    pub async fn handle_sign_merkle_tree_response(&mut self, root: [u8;32], signature: Vec<u8>) {
+        println!("Received sign_merkle_tree_response with root: {:?}", root);
         if self.root.is_none() {
-            self.root = Some(*root);
-            self.sender_to_ss.send(*root).unwrap();
+            self.root = Some(root);
+            self.sender_to_ss.send(root).unwrap();
         }
     }
 }

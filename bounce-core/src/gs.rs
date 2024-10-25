@@ -157,7 +157,7 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
     //let sign_merkle_tree_request = rkyv::deserialize::<ArchivedSignMerkleTreeRequest, rancor::Error>(archived).unwrap();
     let elapsed_time = start.elapsed();
     println!("Deserialized {} bytes in {:.2?}", shared_buffer.len(), elapsed_time);
-    println!("Received sign_merkle_tree_request with {} txs", archived.txs.len());
+    println!("Received sign_merkle_tree_request with {} txs from {}", archived.txs.len(), archived.sender_ip);
 
     output_current_time("Received sign_merkle_tree_request");
 
@@ -180,7 +180,7 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
     let duration = start.elapsed();
     println!("Build MerkleTree: {:?}", duration);
 
-    let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss_ips[0])).await?;
+    let mut client = communication::ss_merkle_tree_handler_service_client::SsMerkleTreeHandlerServiceClient::connect(format!("http://{}:37140", archived.sender_ip)).await?;
     let sign_mk_response = tonic::Request::new(SignMerkleTreeResponse {
         signature: vec![],
         root: mt.root().unwrap().to_vec(),

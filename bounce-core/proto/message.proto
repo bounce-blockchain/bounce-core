@@ -16,6 +16,9 @@ service SATService {
 
 service SSService {
     rpc HandleStart (Start) returns (Response);
+}
+
+service SSMerkleTreeHandlerService {
     rpc HandleSignMerkleTreeResponse (SignMerkleTreeResponse) returns (Response);
 }
 

@@ -1,15 +1,13 @@
 use std::collections::{BTreeMap, HashSet};
 use std::env;
 use std::sync::Arc;
-use communication::{ss_service_server::{SsService, SsServiceServer}, Start, Response as GrpcResponse, SignMerkleTreeResponse};
-use bounce_core::types::{Transaction, SignMerkleTreeRequest, State, Keccak256};
+use communication::{ss_service_server::{SsService, SsServiceServer}, Start, Response as GrpcResponse};
+use bounce_core::types::{Transaction, State, Keccak256};
 use bounce_core::config::Config;
-use bounce_core::common::*;
 use bounce_core::{ResetId, SlotId};
 use bls::min_pk::{PublicKey, SecretKey};
 use key_manager::keyloader;
 use rayon::prelude::*;
-use rand::Rng;
 use tokio::runtime::{Runtime};
 use tokio::sync::RwLock;
 use tonic::{transport::Server, Request, Response, Status};
@@ -23,6 +21,7 @@ pub mod communication {
 pub struct SS {
     config: Config,
     gs_tx_receiver_ports: Vec<u16>,
+    my_ip: String,
 
     clock_send: tokio::sync::mpsc::UnboundedSender<u64>,
     slot_receive: tokio::sync::broadcast::Receiver<SlotMessage>,
@@ -87,7 +86,7 @@ impl SsService for SSLockService {
             }
         });
 
-        let mut ss_mk_tree_handler = SsMerkleTreeHandler::spawn(ss.config.clone(), ss.secret_key.clone(), ss.ground_station_public_keys.clone(), ss.f, sender_to_ss);
+        let mut ss_mk_tree_handler = SsMerkleTreeHandler::spawn(ss.config.clone(), ss.my_ip.clone(), ss.secret_key.clone(), ss.ground_station_public_keys.clone(), ss.f, sender_to_ss);
         let mut mk_tree_handler_slot_receive = slot_send.subscribe();
         tokio::spawn(async move {
             loop {
@@ -118,30 +117,14 @@ impl SsService for SSLockService {
 
         Ok(Response::new(reply))
     }
-
-    async fn handle_sign_merkle_tree_response(
-        &self,
-        response: Request<SignMerkleTreeResponse>,
-    ) -> Result<Response<GrpcResponse>, Status> {
-        output_current_time("SS received a sign_merkle_tree_response");
-
-        let response = response.into_inner();
-        let ss = self.ss.read().await;
-        //ss.ss_merkle_tree_handler.handle_sign_merkle_tree_response(&response.root, &response.signature).await;
-
-        let reply = communication::Response {
-            message: "ACK".to_string(),
-        };
-
-        Ok(Response::new(reply))
-    }
 }
 
 impl SS {
-    pub fn new(config: Config, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>) -> Self {
+    pub fn new(config: Config, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>, my_ip:String) -> Self {
         SS {
             config,
             secret_key,
+            my_ip,
             clock_send: tokio::sync::mpsc::unbounded_channel().0,
             slot_receive: tokio::sync::broadcast::channel(1).1,
             receiver_from_mkt_handler: tokio::sync::mpsc::unbounded_channel().1,
@@ -192,7 +175,8 @@ pub async fn run_ss(config_file: &str, index: usize) -> Result<(), Box<dyn std::
 
     let secret_key = keyloader::read_private_key(format!("ss{:02}", index).as_str());
     let mission_control_public_keys = keyloader::read_mc_public_keys(config.mc.num_keys);
-    let mut ss = SS::new(config, secret_key, mission_control_public_keys);
+    let my_ip = config.ss[index].ip.clone();
+    let ss = SS::new(config, secret_key, mission_control_public_keys, my_ip);
 
     println!("SS is listening on {}", addr);
 
