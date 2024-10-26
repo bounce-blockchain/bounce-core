@@ -221,7 +221,7 @@ async fn main() {
     let duration = start.elapsed();
     println!("Merkle tree built in {:?}", duration);
 
-    let benchmark = Benchmark::new(config, my_ip, txs, mt.root().unwrap(), 10);
+    let benchmark = Benchmark::new(config, my_ip, txs, mt.root().unwrap(), 20);
     let benchmark_lock = Arc::new(RwLock::new(benchmark));
 
     let benchmark_service = BenchmarkLockService {
