@@ -86,7 +86,7 @@ impl Benchmark {
         let gs_ips = self.config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
 
         let mut join_set = JoinSet::new();
-        for gs_ip in &gs_ips[0..std::cmp::min(3, gs_ips.len())] {
+        for gs_ip in &gs_ips[0..std::cmp::min(2, gs_ips.len())] {
             let addr: SocketAddr = format!("{}:{}", gs_ip, 3100).parse().unwrap();
             println!("Spawning process to send sign_merkle_tree_request to {}", addr);
             let sharable_data = Arc::clone(&sharable_data);
