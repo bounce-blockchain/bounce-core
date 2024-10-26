@@ -18,12 +18,31 @@ use bls::min_pk::PublicKey;
 use bounce_core::common::output_current_time;
 use bounce_core::communication;
 
+fn confidence_interval_90(durations: &mut [u128]) -> (u128, u128) {
+    durations.sort();
+
+    let len = durations.len();
+    let lower_idx = (len as f64 * 0.05).round() as usize;
+    let upper_idx = (len as f64 * 0.95).round() as usize;
+    if upper_idx == len {
+        return (durations[lower_idx], durations[upper_idx - 1]);
+    }
+
+    let lower = durations[lower_idx];
+    let upper = durations[upper_idx];
+
+    (lower, upper)
+}
+
 struct Benchmark {
     pub config: Config,
     pub my_ip: String,
     pub sending_time_stamp: u128,
     pub receiving_time_elapsed: Vec<u128>,
-    pub current_received: u32,
+    pub receiving_time_for_first_response: Vec<u128>,
+    pub receiving_time_for_half_response: Vec<u128>,
+    pub receiving_time_for_all_response: Vec<u128>,
+    pub current_received: usize,
     pub txs: Vec<Transaction>,
     pub root: [u8; 32],
     pub iterations: u32,
@@ -36,6 +55,9 @@ impl Benchmark {
     pub fn new(config: Config, my_ip: String, txs: Vec<Transaction>, root:[u8; 32], target_iterations:u32) -> Benchmark {
         Benchmark {
             receiving_time_elapsed: vec![0; config.gs.len()],
+            receiving_time_for_first_response: vec![],
+            receiving_time_for_half_response: vec![],
+            receiving_time_for_all_response: vec![],
             config,
             my_ip,
             sending_time_stamp: 0,
@@ -154,14 +176,26 @@ impl SsMerkleTreeHandlerService for BenchmarkLockService {
             .expect("Time went backwards")
             .as_millis();
         let sending_time = benchmark.sending_time_stamp;
-        let current_received = benchmark.current_received as usize;
         let elapsed = current_time - sending_time;
-        benchmark.receiving_time_elapsed[current_received] += elapsed;
         benchmark.current_received += 1;
+        let current_received = benchmark.current_received;
+        benchmark.receiving_time_elapsed[current_received-1] += elapsed;
+        if current_received == 1 {
+            println!("Updating first response time");
+            benchmark.receiving_time_for_first_response.push(elapsed);
+        }
+        if current_received == (benchmark.config.gs.len()+1) / 2 {
+            println!("Updating half response time");
+            benchmark.receiving_time_for_half_response.push(elapsed);
+        }
+        if current_received == benchmark.config.gs.len() {
+            println!("Updating all response time");
+            benchmark.receiving_time_for_all_response.push(elapsed);
+        }
         println!("\nReceived sign_merkle_tree_response from {} at {}, which elapsed {}", gs_ip, current_time, elapsed);
         println!("root matches: {:?}", benchmark.root == root);
 
-        if benchmark.current_received == benchmark.config.gs.len() as u32 {
+        if benchmark.current_received == benchmark.config.gs.len() {
             benchmark.current_received = 0;
             if benchmark.iterations < benchmark.target_iterations {
                 benchmark.run_benchmark().await;
@@ -169,6 +203,12 @@ impl SsMerkleTreeHandlerService for BenchmarkLockService {
                 println!("Benchmark finished");
                 println!("Average Total time: {}ms", benchmark.total_time/benchmark.target_iterations as u128);
                 println!("Average Sending time: {}ms", benchmark.sending_time/benchmark.target_iterations as u128);
+                let (lower, upper) = confidence_interval_90(&mut benchmark.receiving_time_for_first_response);
+                println!("90% confidence interval for receiving the first response: [{}, {}]", lower, upper);
+                let (lower, upper) = confidence_interval_90(&mut benchmark.receiving_time_for_half_response);
+                println!("90% confidence interval for receiving half of the responses: [{}, {}]", lower, upper);
+                let (lower, upper) = confidence_interval_90(&mut benchmark.receiving_time_for_all_response);
+                println!("90% confidence interval for receiving all responses: [{}, {}]", lower, upper);
                 println!("Average Receiving time: {:?}", benchmark.receiving_time_elapsed.iter().map(|x| x/benchmark.target_iterations as u128).collect::<Vec<u128>>());
             }
         }
@@ -223,7 +263,7 @@ async fn main() {
     let duration = start.elapsed();
     println!("Merkle tree built in {:?}", duration);
 
-    let benchmark = Benchmark::new(config, my_ip, txs, mt.root().unwrap(), 20);
+    let benchmark = Benchmark::new(config, my_ip, txs, mt.root().unwrap(), 5);
     let benchmark_lock = Arc::new(RwLock::new(benchmark));
 
     let benchmark_service = BenchmarkLockService {
