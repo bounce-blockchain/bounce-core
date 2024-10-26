@@ -238,7 +238,7 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let ss_ips = config.ss.iter().map(|ss| ss.ip.clone()).collect::<Vec<String>>();
     let mut gs_ips = config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
     let my_ip = gs_ips[index].clone();
-    let gs_map = build_tree(gs_ips, 2);
+    let gs_map = build_tree(gs_ips, config.fanout.fanout);
     println!("GS map: {:?}", gs_map);
     for port in ports {
         let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
