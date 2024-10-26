@@ -142,6 +142,8 @@ impl SsMerkleTreeHandlerService for BenchmarkLockService {
         &self,
         request: Request<SignMerkleTreeResponse>,
     ) -> Result<Response<GrpcResponse>, Status> {
+        let metadata = request.metadata().clone();
+        let gs_ip = metadata.get("gs_ip").unwrap().to_str().unwrap();
         let request = request.into_inner();
         let root: [u8; 32] = request.root.try_into().expect("Expected a response with root of 32 bytes");
 
@@ -156,7 +158,7 @@ impl SsMerkleTreeHandlerService for BenchmarkLockService {
         let elapsed = current_time - sending_time;
         benchmark.receiving_time_elapsed[current_received] += elapsed;
         benchmark.current_received += 1;
-        println!("\nReceived sign_merkle_tree_response at {}, which elapsed {}", current_time, elapsed);
+        println!("\nReceived sign_merkle_tree_response from {} at {}, which elapsed {}", gs_ip, current_time, elapsed);
         println!("root matches: {:?}", benchmark.root == root);
 
         if benchmark.current_received == benchmark.config.gs.len() as u32 {

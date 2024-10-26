@@ -180,10 +180,11 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
     println!("Build MerkleTree: {:?}", duration);
 
     let mut client = communication::ss_merkle_tree_handler_service_client::SsMerkleTreeHandlerServiceClient::connect(format!("http://{}:37140", archived.sender_ip)).await?;
-    let sign_mk_response = tonic::Request::new(SignMerkleTreeResponse {
+    let mut sign_mk_response = tonic::Request::new(SignMerkleTreeResponse {
         signature: vec![],
         root: mt.root().unwrap().to_vec(),
     });
+    sign_mk_response.metadata_mut().insert("gs_ip", my_ip.parse().unwrap());
     client.handle_sign_merkle_tree_response(sign_mk_response).await?;
 
     let start = std::time::Instant::now();
