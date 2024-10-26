@@ -7,7 +7,7 @@ use bounce_core::config::Config;
 use rayon::prelude::*;
 use tokio::runtime::Runtime;
 use std::env;
-//use std::io::Cursor;
+use std::io::Cursor;
 use std::net::{SocketAddr};
 use std::sync::Arc;
 use keccak_hash::keccak;
@@ -146,16 +146,16 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
         println!("Spawned threads to gossip to other GSs in {:.2?}", elapsed_time);
     }
 
-    // let start = std::time::Instant::now();
-    // let decompressed = zstd::stream::decode_all(Cursor::new(&**shared_buffer)).unwrap();
-    // let elapsed_time = start.elapsed();
-    // println!("Decompressed {} bytes in {:.2?}", decompressed.len(), elapsed_time);
+    let start = std::time::Instant::now();
+    let decompressed = zstd::stream::decode_all(Cursor::new(&**shared_buffer)).unwrap();
+    let elapsed_time = start.elapsed();
+    println!("Decompressed {} bytes in {:.2?}", decompressed.len(), elapsed_time);
 
     let start = std::time::Instant::now();
-    let archived = unsafe { rkyv::access_unchecked::<ArchivedSignMerkleTreeRequest>(&shared_buffer) };
+    let archived = unsafe { rkyv::access_unchecked::<ArchivedSignMerkleTreeRequest>(&decompressed) };
     //let sign_merkle_tree_request = rkyv::deserialize::<ArchivedSignMerkleTreeRequest, rancor::Error>(archived).unwrap();
     let elapsed_time = start.elapsed();
-    println!("Deserialized {} bytes in {:.2?}", shared_buffer.len(), elapsed_time);
+    println!("Deserialized {} bytes in {:.2?}", decompressed.len(), elapsed_time);
     println!("Received sign_merkle_tree_request with {} txs from {}", archived.txs.len(), archived.sender_ip);
 
     output_current_time("Received sign_merkle_tree_request");

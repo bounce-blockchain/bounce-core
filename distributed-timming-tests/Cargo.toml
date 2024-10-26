@@ -13,6 +13,7 @@ rkyv = { workspace = true }
 rs_merkle = {workspace = true}
 tonic = "0.12.3"
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
+zstd = "0.13.2"
 
 [[bin]]
 name = "signmktrequest"

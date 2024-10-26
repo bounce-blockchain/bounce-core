@@ -666,6 +666,7 @@ dependencies = [
  "rs_merkle",
  "tokio",
  "tonic",
+ "zstd",
 ]
 
 [[package]]
