@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use communication::{ss_merkle_tree_handler_service_server::SsMerkleTreeHandlerService, SignMerkleTreeResponse, Response as GrpcResponse};
+use communication::{ss_merkle_tree_handler_service_server::{SsMerkleTreeHandlerService, SsMerkleTreeHandlerServiceServer}, SignMerkleTreeResponse, Response as GrpcResponse};
 use rand::Rng;
 use rkyv::rancor::Error;
 use tokio::io::AsyncWriteExt;
@@ -10,7 +10,9 @@ use tokio::sync::mpsc::{UnboundedSender};
 use tokio::sync::RwLock;
 use tokio::task::JoinSet;
 use tonic::{Request, Response, Status};
+use tonic::transport::Server;
 use bls::min_pk::{PublicKey, SecretKey};
+use slot_clock::SlotMessage;
 use crate::common::output_current_time;
 use crate::config::Config;
 use crate::types::{SignMerkleTreeRequest, Transaction};
@@ -34,7 +36,47 @@ pub struct SsMerkleTreeHandler {
 }
 
 pub struct SsMerkleTreeHandlerLockService {
-    ss_merkle_tree_handler: Arc<RwLock<SsMerkleTreeHandler>>,
+    pub ss_merkle_tree_handler: Arc<RwLock<SsMerkleTreeHandler>>,
+}
+
+pub fn run_grpc_server(ss_merkle_tree_handler: Arc<RwLock<SsMerkleTreeHandler>>, addr: SocketAddr) {
+    let ss_merkle_tree_handler_lock_service = SsMerkleTreeHandlerLockService {
+        ss_merkle_tree_handler,
+    };
+
+    let addr = addr;
+    let svc = SsMerkleTreeHandlerServiceServer::new(ss_merkle_tree_handler_lock_service);
+
+    println!("SsMerkleTreeHandlerService listening on {}", addr);
+
+    tokio::spawn(async move {
+        Server::builder()
+            .add_service(svc)
+            .serve(addr)
+            .await
+            .unwrap();
+    });
+}
+
+pub fn run_slot_listener(ss_merkle_tree_handler: Arc<RwLock<SsMerkleTreeHandler>>, mut slot_receive: tokio::sync::broadcast::Receiver<SlotMessage>) {
+    tokio::spawn(async move {
+        loop {
+            let slog_msg = slot_receive.recv().await;
+            match slog_msg {
+                Ok(msg) => {
+                    if msg == SlotMessage::SlotThreshold1 {
+                        println!("SS merkle tree handler reach SlotThreshold1, sending the sign_merkle_tree_request");
+                        // Send the sign_merkle_tree_request
+                        let mut ss_mk_tree_handler = ss_merkle_tree_handler.write().await;
+                        ss_mk_tree_handler.send_sign_merkle_tree_request().await.unwrap();
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to receive SlotMessage: {:?}", e);
+                }
+            }
+        }
+    });
 }
 
 #[tonic::async_trait]
@@ -59,7 +101,7 @@ impl SsMerkleTreeHandlerService for SsMerkleTreeHandlerLockService {
 
 impl SsMerkleTreeHandler{
 
-    pub fn spawn(config: Config, my_ip:String, secret_key: SecretKey, ground_station_public_keys: Vec<PublicKey>, f: u32, sender_to_ss: UnboundedSender<[u8; 32]>) -> Self {
+    pub fn new(config: Config, my_ip:String, secret_key: SecretKey, ground_station_public_keys: Vec<PublicKey>, f: u32, sender_to_ss: UnboundedSender<[u8; 32]>) -> Self {
         // Generate 1_000_000 random transactions to send to the Ground Station.
         // This is for benchmarking purposes.
         println!("Mktree_handler Generating 1_000_000 random transactions...");

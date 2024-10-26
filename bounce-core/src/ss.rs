@@ -11,7 +11,6 @@ use rayon::prelude::*;
 use tokio::runtime::{Runtime};
 use tokio::sync::RwLock;
 use tonic::{transport::Server, Request, Response, Status};
-use bounce_core::ss_mktree_handler::SsMerkleTreeHandler;
 use slot_clock::{SlotClock, SlotMessage};
 
 pub mod communication {
@@ -66,7 +65,6 @@ impl SsService for SSLockService {
                 let slog_msg = slot_receive.recv().await;
                 match slog_msg {
                     Ok(msg) => {
-                        println!("Received SlotMessage: {:?}", msg);
                         match msg {
                             SlotMessage::SlotTick => {
                                 let mut ss = ss_service.write().await;
@@ -74,6 +72,7 @@ impl SsService for SSLockService {
                             }
                             SlotMessage::SlotThreshold1 => {}
                             SlotMessage::SlotThreshold2 => {
+                                println!("SS reaches SlotThreshold2");
                                 let mut ss = ss_service.write().await;
                                 ss.send_ss_message();
                             }
@@ -86,25 +85,10 @@ impl SsService for SSLockService {
             }
         });
 
-        let mut ss_mk_tree_handler = SsMerkleTreeHandler::spawn(ss.config.clone(), ss.my_ip.clone(), ss.secret_key.clone(), ss.ground_station_public_keys.clone(), ss.f, sender_to_ss);
-        let mut mk_tree_handler_slot_receive = slot_send.subscribe();
-        tokio::spawn(async move {
-            loop {
-                let slog_msg = mk_tree_handler_slot_receive.recv().await;
-                match slog_msg {
-                    Ok(msg) => {
-                        println!("Received SlotMessage: {:?}", msg);
-                        if msg == SlotMessage::SlotThreshold1 {
-                            // Send the sign_merkle_tree_request
-                            ss_mk_tree_handler.send_sign_merkle_tree_request().await.unwrap();
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to receive SlotMessage: {:?}", e);
-                    }
-                }
-            }
-        });
+        let ss_mk_tree_handler = bounce_core::ss_mktree_handler::SsMerkleTreeHandler::new(ss.config.clone(), ss.my_ip.clone(), ss.secret_key.clone(), ss.ground_station_public_keys.clone(), ss.f, sender_to_ss);
+        let ss_mk_tree_handler_lock = Arc::new(RwLock::new(ss_mk_tree_handler));
+        bounce_core::ss_mktree_handler::run_grpc_server(ss_mk_tree_handler_lock.clone(), "0.0.0.0:37140".parse().unwrap());
+        bounce_core::ss_mktree_handler::run_slot_listener(ss_mk_tree_handler_lock, slot_send.subscribe());
 
         let mut slot_timer = SlotClock::new(5000, 500, 4000, slot_send, clock_recv);
         tokio::spawn(async move { if (slot_timer.start().await).is_err() {} });
@@ -156,6 +140,7 @@ impl SS {
 
     pub fn handle_slot_tick(&mut self) {
         self.slot_id += 1;
+        println!("Slot tick. SS is at slot {}", self.slot_id);
     }
 
     pub fn send_ss_message(&mut self) {
