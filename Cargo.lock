@@ -654,6 +654,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "distributed-timming-tests"
+version = "0.1.0"
+dependencies = [
+ "bls",
+ "bounce-core",
+ "keccak-hash",
+ "rand",
+ "rayon",
+ "rkyv",
+ "rs_merkle",
+ "tokio",
+ "tonic",
+]
+
+[[package]]
 name = "dlv-list"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

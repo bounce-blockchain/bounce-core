@@ -6,5 +6,5 @@ pub fn output_current_time(msg: &str) {
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
     let in_ms = since_the_epoch.as_millis();
-    println!("{} at {}\n", msg, in_ms);
+    println!("{} at {}", msg, in_ms);
 }
