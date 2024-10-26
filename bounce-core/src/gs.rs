@@ -10,7 +10,6 @@ use std::env;
 //use std::io::Cursor;
 use std::net::{SocketAddr};
 use std::sync::Arc;
-use std::time::Instant;
 use keccak_hash::keccak;
 use rs_merkle::MerkleTree;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -120,9 +119,9 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
 
     let shared_buffer = Arc::new(buffer);
 
-    let gs_peers = gs_map.get(&my_ip).unwrap();
+    let gs_peers = gs_map.get(&my_ip);
     let mut gossip_join_set = JoinSet::new();
-    if !gs_peers.is_empty() {
+    if gs_peers.is_some()&&!gs_peers.unwrap().is_empty() {
         println!("Gossiping to other GSs: {:?}", gs_map.get(&my_ip));
         let start = std::time::Instant::now();
         for gs_ip in gs_map.get(&my_ip).unwrap() {
@@ -162,12 +161,12 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
     output_current_time("Received sign_merkle_tree_request");
 
     if archived.txs.len() == 0 {
-        log::log!(log::Level::Warn, "Received an empty sign_merkle_tree_request. Not processing.");
+        println!("Received an empty sign_merkle_tree_request. Not processing.");
         return Ok(());
     }
 
     //process the request
-    let start = Instant::now();
+    let start = std::time::Instant::now();
     let hashes = archived.txs
         .par_iter()
         .map(|tx| keccak(&tx.0).into())
@@ -175,7 +174,7 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
     let duration = start.elapsed();
     println!("Hashing of txs: {:?}", duration);
 
-    let start = Instant::now();
+    let start = std::time::Instant::now();
     let mt = MerkleTree::<Keccak256>::from_leaves(&hashes);
     let duration = start.elapsed();
     println!("Build MerkleTree: {:?}", duration);
@@ -187,7 +186,7 @@ pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_ma
     });
     client.handle_sign_merkle_tree_response(sign_mk_response).await?;
 
-    let start = Instant::now();
+    let start = std::time::Instant::now();
     gossip_join_set.join_all().await;
     let duration = start.elapsed();
     println!("Awaiting Gossiping to other GSs: {:?}", duration);
@@ -238,25 +237,7 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let ss_ips = config.ss.iter().map(|ss| ss.ip.clone()).collect::<Vec<String>>();
     let mut gs_ips = config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
     let my_ip = gs_ips[index].clone();
-    gs_ips.insert(0, "dummy".to_string());
-    gs_ips.insert(1, "dummy".to_string());
-    let mut gs_map: HashMap<String, HashSet<String>> = HashMap::new();
-    for (i, gs) in gs_ips.iter().enumerate() {
-        if i < 2 {
-            continue;
-        }
-        let mut set = HashSet::new();
-        if i * 3 - 1 < gs_ips.len() {
-            set.insert(gs_ips[i * 3 - 1].clone());
-        }
-        if i * 3 < gs_ips.len() {
-            set.insert(gs_ips[i * 3].clone());
-        }
-        if i * 3 + 1 < gs_ips.len() {
-            set.insert(gs_ips[i * 3 + 1].clone());
-        }
-        gs_map.insert(gs.clone(), set);
-    }
+    let gs_map = build_tree(gs_ips, 3);
     println!("GS map: {:?}", gs_map);
     for port in ports {
         let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
@@ -271,6 +252,25 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
         .await?;
 
     Ok(())
+}
+
+fn build_tree(gs_ips:Vec<String>, fanout: usize) -> HashMap<String, HashSet<String>> {
+    let mut tree: HashMap<String, HashSet<String>> = HashMap::new();
+    let n = gs_ips.len();
+    for i in 1..=n {
+        let children_start = i * fanout + 1;
+        let children_end = (i + 1) * fanout + 1;
+
+        for child in children_start..children_end {
+            if child > n {
+                break;
+            }
+
+            tree.entry(gs_ips[i-1].clone()).or_insert_with(HashSet::new).insert(gs_ips[child-1].clone());
+        }
+    }
+
+    tree
 }
 
 fn main() {
