@@ -52,7 +52,7 @@ struct Benchmark {
 }
 
 impl Benchmark {
-    pub fn new(config: Config, my_ip: String, txs: Vec<Transaction>, root:[u8; 32], target_iterations:u32) -> Benchmark {
+    pub fn new(config: Config, my_ip: String, txs: Vec<Transaction>, target_iterations:u32) -> Benchmark {
         Benchmark {
             receiving_time_elapsed: vec![0; config.gs.len()],
             receiving_time_for_first_response: vec![],
@@ -63,7 +63,7 @@ impl Benchmark {
             sending_time_stamp: 0,
             current_received: 0,
             txs,
-            root,
+            root: [0; 32],
             iterations: 0,
             target_iterations,
             total_time: 0,
@@ -142,9 +142,22 @@ impl Benchmark {
         println!("Spawned all workers in {:?}", elapsed);
 
         let start = std::time::Instant::now();
+        let tx_hashes = sign_merkle_tree_request.txs
+            .par_iter()
+            .map(|tx| keccak(tx.as_ref()).into())
+            .collect::<Vec<[u8; 32]>>();
+        let elapsed = start.elapsed();
+        println!("Hashed {} transactions in {:?}", tx_hashes.len(), elapsed);
+        let start = std::time::Instant::now();
+        let mt = MerkleTree::<Keccak256>::from_leaves(&tx_hashes);
+        let duration = start.elapsed();
+        println!("Merkle tree built in {:?}", duration);
+        self.root = mt.root().unwrap();
+
+        let start = std::time::Instant::now();
         join_set.join_all().await;
         let elapsed = start.elapsed();
-        output_current_time(&format!("sign_merkle_tree_request sent. Time elapsed: {:?}", elapsed));
+        output_current_time(&format!("sign_merkle_tree_request sent. Sending overhead: {:?}", elapsed));
         self.sending_time += elapsed.as_millis();
 
         let last_elapsed = first_start.elapsed();
@@ -180,6 +193,8 @@ impl SsMerkleTreeHandlerService for BenchmarkLockService {
         benchmark.current_received += 1;
         let current_received = benchmark.current_received;
         benchmark.receiving_time_elapsed[current_received-1] += elapsed;
+        println!("\nReceived sign_merkle_tree_response from {} at {}, which elapsed {}", gs_ip, current_time, elapsed);
+        println!("root matches: {:?}", benchmark.root == root);
         if current_received == 1 {
             println!("Updating first response time");
             benchmark.receiving_time_for_first_response.push(elapsed);
@@ -192,8 +207,6 @@ impl SsMerkleTreeHandlerService for BenchmarkLockService {
             println!("Updating all response time");
             benchmark.receiving_time_for_all_response.push(elapsed);
         }
-        println!("\nReceived sign_merkle_tree_response from {} at {}, which elapsed {}", gs_ip, current_time, elapsed);
-        println!("root matches: {:?}", benchmark.root == root);
 
         if benchmark.current_received == benchmark.config.gs.len() {
             benchmark.current_received = 0;
@@ -251,19 +264,19 @@ async fn main() {
     }
     let elapsed = start.elapsed();
     println!("Mktree_handler Generated {} random transactions in {:?}", num_txs, elapsed);
-    let start = std::time::Instant::now();
-    let tx_hashes = txs
-        .par_iter()
-        .map(|tx| keccak(tx.as_ref()).into())
-        .collect::<Vec<[u8; 32]>>();
-    let elapsed = start.elapsed();
-    println!("Hashed {} transactions in {:?}", tx_hashes.len(), elapsed);
-    let start = std::time::Instant::now();
-    let mt = MerkleTree::<Keccak256>::from_leaves(&tx_hashes);
-    let duration = start.elapsed();
-    println!("Merkle tree built in {:?}", duration);
+    // let start = std::time::Instant::now();
+    // let tx_hashes = txs
+    //     .par_iter()
+    //     .map(|tx| keccak(tx.as_ref()).into())
+    //     .collect::<Vec<[u8; 32]>>();
+    // let elapsed = start.elapsed();
+    // println!("Hashed {} transactions in {:?}", tx_hashes.len(), elapsed);
+    // let start = std::time::Instant::now();
+    // let mt = MerkleTree::<Keccak256>::from_leaves(&tx_hashes);
+    // let duration = start.elapsed();
+    // println!("Merkle tree built in {:?}", duration);
 
-    let benchmark = Benchmark::new(config, my_ip, txs, mt.root().unwrap(), 20);
+    let benchmark = Benchmark::new(config, my_ip, txs, 20);
     let benchmark_lock = Arc::new(RwLock::new(benchmark));
 
     let benchmark_service = BenchmarkLockService {
