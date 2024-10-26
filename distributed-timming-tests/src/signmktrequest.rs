@@ -49,6 +49,7 @@ struct Benchmark {
     pub target_iterations: u32,
     pub total_time: u128,
     pub sending_time: u128,
+    pub all_root_matched: bool,
 }
 
 impl Benchmark {
@@ -68,6 +69,7 @@ impl Benchmark {
             target_iterations,
             total_time: 0,
             sending_time: 0,
+            all_root_matched: true,
         }
     }
 
@@ -75,6 +77,7 @@ impl Benchmark {
         self.iterations += 1;
         println!("\nRunning benchmark iteration {}", self.iterations);
         let txs = self.txs.clone();
+        self.root = [0; 32];
         let sign_merkle_tree_request = SignMerkleTreeRequest {
             txs,
             sender_ip: self.my_ip.clone(),
@@ -82,6 +85,18 @@ impl Benchmark {
         let elapsed = self.send_sign_merkle_tree_request(&sign_merkle_tree_request).await.unwrap();
         self.total_time += elapsed.as_millis();
 
+        let start = std::time::Instant::now();
+        let tx_hashes = sign_merkle_tree_request.txs
+            .par_iter()
+            .map(|tx| keccak(tx.as_ref()).into())
+            .collect::<Vec<[u8; 32]>>();
+        let elapsed = start.elapsed();
+        println!("Hashed {} transactions in {:?}", tx_hashes.len(), elapsed);
+        let start = std::time::Instant::now();
+        let mt = MerkleTree::<Keccak256>::from_leaves(&tx_hashes);
+        let duration = start.elapsed();
+        println!("Merkle tree built in {:?}", duration);
+        self.root = mt.root().unwrap();
     }
 
     pub async fn send_sign_merkle_tree_request(&mut self, sign_merkle_tree_request:&SignMerkleTreeRequest) -> std::io::Result<Duration> {
@@ -142,19 +157,6 @@ impl Benchmark {
         println!("Spawned all workers in {:?}", elapsed);
 
         let start = std::time::Instant::now();
-        let tx_hashes = sign_merkle_tree_request.txs
-            .par_iter()
-            .map(|tx| keccak(tx.as_ref()).into())
-            .collect::<Vec<[u8; 32]>>();
-        let elapsed = start.elapsed();
-        println!("Hashed {} transactions in {:?}", tx_hashes.len(), elapsed);
-        let start = std::time::Instant::now();
-        let mt = MerkleTree::<Keccak256>::from_leaves(&tx_hashes);
-        let duration = start.elapsed();
-        println!("Merkle tree built in {:?}", duration);
-        self.root = mt.root().unwrap();
-
-        let start = std::time::Instant::now();
         join_set.join_all().await;
         let elapsed = start.elapsed();
         output_current_time(&format!("sign_merkle_tree_request sent. Sending overhead: {:?}", elapsed));
@@ -195,6 +197,9 @@ impl SsMerkleTreeHandlerService for BenchmarkLockService {
         benchmark.receiving_time_elapsed[current_received-1] += elapsed;
         println!("\nReceived sign_merkle_tree_response from {} at {}, which elapsed {}", gs_ip, current_time, elapsed);
         println!("root matches: {:?}", benchmark.root == root);
+        if benchmark.root != root {
+            benchmark.all_root_matched = false;
+        }
         if current_received == 1 {
             println!("Updating first response time");
             benchmark.receiving_time_for_first_response.push(elapsed);
@@ -214,6 +219,7 @@ impl SsMerkleTreeHandlerService for BenchmarkLockService {
                 benchmark.run_benchmark().await;
             } else {
                 println!("Benchmark finished");
+                println!("All root matched: {:?}", benchmark.all_root_matched);
                 println!("Average Total time: {}ms", benchmark.total_time/benchmark.target_iterations as u128);
                 println!("Average Sending time: {}ms", benchmark.sending_time/benchmark.target_iterations as u128);
                 let (lower, upper) = confidence_interval_90(&mut benchmark.receiving_time_for_first_response);
