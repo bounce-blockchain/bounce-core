@@ -12,6 +12,7 @@ service GSService {
 
 service SATService {
     rpc HandleStart (Start) returns (Response);
+    rpc HandleSendingStationMessage (SendingStationMessage) returns (Response);
 }
 
 service SSService {
@@ -66,4 +67,9 @@ message Start {
 message SignMerkleTreeResponse {
     bytes signature = 1;
     bytes root = 2;
+}
+
+message SendingStationMessage {
+    bytes sending_station_message = 1;
+    bytes signature = 2;
 }

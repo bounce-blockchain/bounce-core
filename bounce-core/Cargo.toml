@@ -5,8 +5,10 @@ authors = ["Xiaoteng (Frank) Liu <xiaoteng.liu@nyu.edu>"]
 edition = "2021"
 
 [dependencies]
+anyhow = { workspace = true }
 bls = { path = "../bls", features = ["proptest"] }
 bincode = { workspace = true }
+bitvec = { version = "1.0.1", features = ["serde"] }
 keccak-hash = { workspace = true }
 key-manager = { path = "../key-manager" }
 log = { workspace = true }

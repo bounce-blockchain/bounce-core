@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, HashSet};
 use std::env;
 use std::sync::Arc;
+use bitvec::vec::BitVec;
 use communication::{ss_service_server::{SsService, SsServiceServer}, Start, Response as GrpcResponse};
-use bounce_core::types::{Transaction, State, Keccak256};
+use bounce_core::types::{Transaction, State, Keccak256, SendingStationMessage, MultiSigned, CommitRecord};
 use bounce_core::config::Config;
 use bounce_core::{ResetId, SlotId};
 use bls::min_pk::{PublicKey, SecretKey};
@@ -11,6 +12,7 @@ use rayon::prelude::*;
 use tokio::runtime::{Runtime};
 use tokio::sync::RwLock;
 use tonic::{transport::Server, Request, Response, Status};
+use bls::min_pk::proof_of_possession::*;
 use slot_clock::{SlotClock, SlotMessage};
 
 pub mod communication {
@@ -31,7 +33,8 @@ pub struct SS {
     slot_id: SlotId,
     reset_id: ResetId,
     // SlotIds to public keys of sending stations/satellties.
-    slot_assignments: BTreeMap<SlotId, HashSet<PublicKey>>,
+    ss_slot_assignments: BTreeMap<SlotId, HashSet<PublicKey>>,
+    sat_slot_assignments: BTreeMap<SlotId, PublicKey>,
     ground_station_public_keys: Vec<PublicKey>,
     mission_control_public_keys: Vec<PublicKey>,
     f: u32,
@@ -74,7 +77,7 @@ impl SsService for SSLockService {
                             SlotMessage::SlotThreshold2 => {
                                 println!("SS reaches SlotThreshold2");
                                 let mut ss = ss_service.write().await;
-                                ss.send_ss_message();
+                                ss.send_ss_message().await;
                             }
                         }
                     }
@@ -120,17 +123,21 @@ impl SS {
             slot_id: 0,
             reset_id: 0,
             gs_tx_receiver_ports: vec![3100],
-            slot_assignments: BTreeMap::new(),
+            ss_slot_assignments: BTreeMap::new(),
+            sat_slot_assignments: BTreeMap::new(),
         }
     }
 
     pub fn start(&mut self, start: Start, clock_send: tokio::sync::mpsc::UnboundedSender<u64>, receiver_from_mkt_handler: tokio::sync::mpsc::UnboundedReceiver<[u8;32]>) {
         self.state = State::Ready;
         self.ground_station_public_keys = start.ground_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
-        self.slot_assignments = BTreeMap::new();
+        self.ss_slot_assignments = BTreeMap::new();
         for (slot_id, public_keys) in start.sending_station_slot_assignments.iter() {
-            self.slot_assignments.insert(*slot_id, HashSet::from_iter(public_keys.public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap())));
+            self.ss_slot_assignments.insert(*slot_id, HashSet::from_iter(public_keys.public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap())));
         }
+        self.sat_slot_assignments = start.satellite_slot_assignments.iter().map(|(slot_id, pk)| {
+            (*slot_id, PublicKey::from_bytes(&pk.value).unwrap())
+        }).collect();
         self.f = start.f;
         self.clock_send = clock_send;
         self.receiver_from_mkt_handler = receiver_from_mkt_handler;
@@ -143,11 +150,50 @@ impl SS {
         println!("Slot tick. SS is at slot {}", self.slot_id);
     }
 
-    pub fn send_ss_message(&mut self) {
+    pub async fn send_ss_message(&mut self) {
         let root = self.receiver_from_mkt_handler.try_recv();
         if root.is_ok() {
             let root = root.unwrap();
             println!("SS is sending a msg to satellite with root {:?}", root);
+            let next_slot = self.slot_id + 1;
+            let multi_signed_root = MultiSigned::new(root,BitVec::new(),&vec![&self.secret_key.sign(&vec![0u8;32])]);
+            let cr = CommitRecord {
+                reset_id: self.reset_id,
+                slot_id: self.slot_id,
+                txroot: vec![],
+                prev: [0u8;32],
+                commit_flag: true,
+                used_as_reset: false,
+            };
+            let multi_signed_cr = MultiSigned::new(cr, BitVec::new(), &vec![&self.secret_key.sign(&vec![0u8;32])]);
+            let sending_station_message = SendingStationMessage {
+                reset_id: self.reset_id,
+                slot_id: next_slot,
+                txroot: vec![multi_signed_root],
+                prev_cr: multi_signed_cr,
+            };
+            let serialized_ss_msg = bincode::serialize(&sending_station_message).unwrap();
+            let signature = self.secret_key.sign(&serialized_ss_msg);
+
+            let sat_ip = self.config.sat[0].ip.clone();
+            let sat = communication::sat_service_client::SatServiceClient::connect(format!("http://{}:37131", sat_ip)).await;
+            if sat.is_err() {
+                println!("Failed to connect to SAT");
+                return;
+            }
+            let mut sat = sat.unwrap();
+            let request = tonic::Request::new(communication::SendingStationMessage {
+                sending_station_message: serialized_ss_msg,
+                signature: Vec::from(signature.to_bytes()),
+            });
+            let response = sat.handle_sending_station_message(request).await;
+            if response.is_err() {
+                println!("Failed to send message to SAT");
+                return;
+            }
+            let response = response.unwrap();
+            println!("Response from SAT: {:?}", response.into_inner().message);
+
         } else {
             println!("SS does not have a root to send");
         }

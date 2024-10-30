@@ -1,8 +1,11 @@
 use serde::{Deserialize, Serialize};
+use anyhow::{anyhow, Result};
+use bitvec::prelude::*;
 use keccak_hash::write_keccak;
 use rs_merkle::Hasher;
 use bls::min_pk::proof_of_possession::*;
 use rkyv;
+use crate::{ResetId, SlotId};
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum State {
@@ -76,6 +79,84 @@ impl Hasher for Keccak256 {
         write_keccak(data, &mut output);
         output
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Hash, PartialEq, Eq)]
+pub struct CommitRecord {
+    /// Reset number
+    pub reset_id: ResetId,
+    /// Slot identifier
+    pub slot_id: SlotId,
+    /// The Transaction root hash
+    pub txroot: Vec<[u8; 32]>,
+    // The hash of the previous commit record
+    pub prev: [u8; 32],
+    //true for positive and false for negative commit record
+    pub commit_flag: bool,
+
+    pub used_as_reset: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct SignedCommitRecord {
+    pub commit_record: CommitRecord,
+    pub signature: Signature,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MultiSigned<T>
+where
+    T: serde::Serialize,
+{
+    pub payload: T,
+    pub signers_bitvec: BitVec, // BitVec representing which signers signed the payload. For it work correctly, the order of the public keys of the signers must be the same for all agents.
+    pub signature: Signature,
+}
+
+impl<T> MultiSigned<T>
+where
+    T: serde::Serialize,
+{
+    pub fn new(payload: T, signers_bitvec: BitVec, signatures: &[&Signature]) -> Self {
+        let signature = Signature::aggregate(signatures).unwrap();
+        Self {
+            payload,
+            signers_bitvec,
+            signature,
+        }
+    }
+
+    pub fn verify(&self, public_keys: &[&PublicKey]) -> Result<()> {
+        if self.signers_bitvec.len() != public_keys.len() {
+            return Err(anyhow!("Number of signers and public keys mismatch"));
+        }
+
+        let mut pks_refs = Vec::new();
+        for (i, &pk) in public_keys.iter().enumerate() {
+            if self.signers_bitvec[i] {
+                pks_refs.push(pk);
+            }
+        }
+
+        let paylod_bytes = bincode::serialize(&self.payload).unwrap();
+
+        if self
+            .signature
+            .fast_aggregate_verify(&pks_refs, &paylod_bytes)
+        {
+            Ok(())
+        } else {
+            Err(anyhow!("Signature verification failed"))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SendingStationMessage {
+    pub reset_id: ResetId,
+    pub slot_id: SlotId,
+    pub txroot: Vec<MultiSigned<[u8; 32]>>,
+    pub prev_cr: MultiSigned<CommitRecord>,
 }
 
 #[cfg(test)]

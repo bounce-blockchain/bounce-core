@@ -48,6 +48,33 @@ impl SatService for SatLockService {
 
         Ok(Response::new(reply))
     }
+
+    async fn handle_sending_station_message(
+        &self,
+        request: Request<communication::SendingStationMessage>,
+    ) -> Result<Response<GrpcResponse>, Status> {
+        let request = request.into_inner();
+        let deserialized_ss_msg = bincode::deserialize(&request.sending_station_message);
+        if deserialized_ss_msg.is_err() {
+            return Err(Status::invalid_argument("Failed to deserialize SendingStationMessage"));
+        }
+        let sending_station_message:SendingStationMessage = deserialized_ss_msg.unwrap();
+        let deserialized_sig = Signature::from_bytes(&request.signature);
+        if deserialized_sig.is_err() {
+            return Err(Status::invalid_argument("Failed to deserialize Signature"));
+        }
+        let signature:Signature = deserialized_sig.unwrap();
+
+        let mut sat = self.sat.write().await;
+        sat.handle_sending_station_message(sending_station_message, signature);
+
+
+        let reply = communication::Response {
+            message: "ACK".to_string(),
+        };
+
+        Ok(Response::new(reply))
+    }
 }
 
 impl Sat {
@@ -84,6 +111,10 @@ impl Sat {
 
         println!("Sat started with f: {}", self.f);
     }
+
+    pub fn handle_sending_station_message(&mut self, message: SendingStationMessage, signature: Signature) {
+        println!("Sat received a SendingStationMessage: {:?} with signature: {:?}", message.txroot[0].payload, signature);
+    }
 }
 
 pub async fn run_sat(config_file: &str, index: usize) -> Result<(), Box<dyn std::error::Error>> {
@@ -111,9 +142,9 @@ pub async fn run_sat(config_file: &str, index: usize) -> Result<(), Box<dyn std:
 use tokio::runtime::Runtime;
 use std::env;
 use std::sync::Arc;
-use bls::min_pk::{PublicKey, SecretKey};
+use bls::min_pk::{PublicKey, SecretKey, Signature};
 use bounce_core::{ResetId, SlotId};
-use bounce_core::types::State;
+use bounce_core::types::{SendingStationMessage, State};
 use key_manager::keyloader;
 
 mod config;
