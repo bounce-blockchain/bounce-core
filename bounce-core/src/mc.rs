@@ -114,14 +114,12 @@ impl MC {
             let response = client.handle_start(request).await?;
             println!("Response from SS: {:?}", response.into_inner().message);
         }
-        // for sat in &config.sat {
-        //     let mut client = communication::sat_service_client::SatServiceClient::connect(format!("http://{}:37131", sat.ip)).await?;
-        //     let request = tonic::Request::new(start.clone());
-        //     let response = client.handle_start(request).await?;
-        //     println!("Response from Sat: {:?}", response.into_inner().message);
-        // }
-
-        // Similarly, send the start message to GS and SAT instances.
+        for sat in &config.sat {
+            let mut client = communication::sat_service_client::SatServiceClient::connect(format!("http://{}:37131", sat.ip)).await?;
+            let request = tonic::Request::new(start.clone());
+            let response = client.handle_start(request).await?;
+            println!("Response from Sat: {:?}", response.into_inner().message);
+        }
 
         Ok(())
     }

@@ -11,6 +11,9 @@ pub mod communication {
 pub struct Sat {
     config: Config,
     secret_key: SecretKey,
+
+    clock_send: tokio::sync::mpsc::UnboundedSender<u64>,
+
     state: State,
     //sending_station_messages: Vec<SendingStationMessage>,
     //dummy_sending_station_message: Option<SendingStationMessage>,
@@ -40,7 +43,38 @@ impl SatService for SatLockService {
         println!("Sat received a Start message from MC with t: {}", start.get_ref().t);
         let mut sat = self.sat.write().await;
 
-        sat.start(start.into_inner());
+        let (clock_send, clock_recv) = tokio::sync::mpsc::unbounded_channel();
+        let (slot_send, mut slot_receive) = tokio::sync::broadcast::channel(9);
+
+        let start = start.into_inner();
+        let t = start.t;
+        sat.start(start,clock_send);
+
+        let sat_service = self.sat.clone();
+        tokio::spawn(async move {
+            loop {
+                let slog_msg = slot_receive.recv().await;
+                match slog_msg {
+                    Ok(msg) => {
+                        match msg {
+                            SlotMessage::SlotTick => {
+                                let mut sat = sat_service.write().await;
+                                sat.handle_slot_tick().await;
+                            }
+                            _ => {}
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to receive SlotMessage: {:?}", e);
+                    }
+                }
+            }
+        });
+
+        let mut slot_timer = SlotClock::new(5000, 500, 4000, slot_send, clock_recv);
+        tokio::spawn(async move { if (slot_timer.start().await).is_err() {} });
+
+        sat.clock_send.send(t).unwrap();
 
         let reply = communication::Response {
             message: "Sat processed the start message".to_string(),
@@ -82,6 +116,7 @@ impl Sat {
         Sat {
             config,
             secret_key,
+            clock_send: tokio::sync::mpsc::unbounded_channel().0,
             mission_control_public_keys,
             ground_station_public_keys: vec![],
             sending_station_public_keys: vec![],
@@ -99,7 +134,7 @@ impl Sat {
         }
     }
 
-    pub fn start(&mut self, start: Start) {
+    pub fn start(&mut self, start: Start, clock_send: tokio::sync::mpsc::UnboundedSender<u64>) {
         self.state = State::Ready;
         self.ground_station_public_keys = start.ground_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
         self.sending_station_public_keys = start.sending_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
@@ -109,11 +144,18 @@ impl Sat {
 
         self.f = start.f;
 
+        self.clock_send = clock_send;
+
         println!("Sat started with f: {}", self.f);
     }
 
     pub fn handle_sending_station_message(&mut self, message: SendingStationMessage, signature: Signature) {
         println!("Sat received a SendingStationMessage: {:?} with signature: {:?}", message.txroot[0].payload, signature);
+    }
+
+    pub async fn handle_slot_tick(&mut self) {
+        self.slot_id += 1;
+        println!("Slot tick. Sat is at slot {}", self.slot_id);
     }
 }
 
@@ -146,6 +188,7 @@ use bls::min_pk::{PublicKey, SecretKey, Signature};
 use bounce_core::{ResetId, SlotId};
 use bounce_core::types::{SendingStationMessage, State};
 use key_manager::keyloader;
+use slot_clock::{SlotClock, SlotMessage};
 
 mod config;
 
