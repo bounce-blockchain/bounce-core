@@ -1,6 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap};
 use tonic::{transport::Server, Request, Response, Status};
-use communication::{sat_service_server::{SatService, SatServiceServer}, Start, Response as GrpcResponse};
+use communication::{sat_service_server::{SatService, SatServiceServer}, Response as GrpcResponse};
 use bounce_core::config::Config;
 use tokio::sync::RwLock;
 use tokio::runtime::Runtime;
@@ -8,9 +8,9 @@ use std::env;
 use std::sync::Arc;
 use keccak_hash::keccak;
 use bls::min_pk::{PublicKey, SecretKey, Signature};
-use bls::min_pk::proof_of_possession::SecretKeyPop;
+use bls::min_pk::proof_of_possession::{SecretKeyPop, SignaturePop};
 use bounce_core::{ResetId, SlotId};
-use bounce_core::types::{CommitRecord, SendingStationMessage, SignedCommitRecord, State};
+use bounce_core::types::{CommitRecord, SenderType, SendingStationMessage, SignedCommitRecord, Start, State};
 use key_manager::keyloader;
 use slot_clock::{SlotClock, SlotMessage};
 
@@ -48,17 +48,30 @@ pub struct SatLockService {
 impl SatService for SatLockService {
     async fn handle_start(
         &self,
-        start: Request<Start>,
+        start: Request<communication::Start>,
     ) -> Result<Response<GrpcResponse>, Status> {
-        println!("Sat received a Start message from MC with t: {}", start.get_ref().t);
+        println!("Sat received a Start message from MC");
         let mut sat = self.sat.write().await;
 
         let (clock_send, clock_recv) = tokio::sync::mpsc::unbounded_channel();
         let (slot_send, mut slot_receive) = tokio::sync::broadcast::channel(9);
 
         let start = start.into_inner();
-        let t = start.t;
-        sat.start(start,clock_send);
+        let deserialized_sigs = start.signatures.iter().map(|sig| Signature::from_bytes(&sig).unwrap()).collect::<Vec<Signature>>();
+
+        let verified = sat.verify_mission_control_signature(&deserialized_sigs, &start.start_message);
+        if !verified {
+            return Err(Status::unauthenticated(format!("Failed to verify Mission Control signatures on Satellite with pk: {:?}", sat.secret_key.sk_to_pk())));
+        }
+
+        let deserialized_start_msg = bincode::deserialize(&start.start_message);
+        if deserialized_start_msg.is_err() {
+            return Err(Status::invalid_argument("Failed to serialize start message"));
+        }
+        let deserialized_start_msg: bounce_core::types::Start = deserialized_start_msg.unwrap();
+
+        let t = deserialized_start_msg.t;
+        sat.start(deserialized_start_msg,clock_send);
 
         let sat_service = self.sat.clone();
         tokio::spawn(async move {
@@ -144,16 +157,46 @@ impl Sat {
         }
     }
 
+    pub fn verify_signature(&self, signature: &Signature, msg: &[u8], sender: SenderType) -> bool {
+        match sender {
+            SenderType::GroundStation => {
+                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            SenderType::SendingStation => {
+                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            SenderType::Satellite => {
+                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            _ => false,
+        }
+    }
+
+    pub fn verify_mission_control_signature(&self, signatures: &[Signature], msg: &[u8]) -> bool {
+        if self.mission_control_public_keys.is_empty() || signatures.len() as f32 / (self.mission_control_public_keys.len() as f32) < self.mc_limit {
+            return false;
+        }
+        let mut verified = 0;
+        for (_, sig) in signatures.iter().enumerate() {
+            if self.mission_control_public_keys.iter().any(|pk| sig.verify(pk, msg)) {
+                verified += 1;
+            }
+        }
+        log::debug!(
+            "Verified {} out of {} received Mission Control signatures, using {} public keys",
+            verified,
+            signatures.len(),
+            self.mission_control_public_keys.len()
+        );
+        (verified as f32) / (self.mission_control_public_keys.len() as f32) >= self.mc_limit
+    }
+
     pub fn start(&mut self, start: Start, clock_send: tokio::sync::mpsc::UnboundedSender<u64>) {
         self.state = State::Ready;
-        self.ground_station_public_keys = start.ground_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
-        self.sending_station_public_keys = start.sending_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
-        self.slot_assignments = start.satellite_slot_assignments.iter().map(|(slot_id, pk)| {
-            (*slot_id, PublicKey::from_bytes(&pk.value).unwrap())
-        }).collect();
-
+        self.ground_station_public_keys = start.ground_station_public_keys;
+        self.sending_station_public_keys = start.sending_station_public_keys;
+        self.slot_assignments = start.satellite_slot_assignments;
         self.f = start.f;
-
         self.clock_send = clock_send;
 
         println!("Sat started with f: {}", self.f);

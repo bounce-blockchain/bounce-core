@@ -11,11 +11,12 @@ use tokio::sync::RwLock;
 use tokio::task::JoinSet;
 use tonic::{Request, Response, Status};
 use tonic::transport::Server;
-use bls::min_pk::{PublicKey, SecretKey};
+use bls::min_pk::{PublicKey, SecretKey, Signature};
+use bls::min_pk::proof_of_possession::SignaturePop;
 use slot_clock::SlotMessage;
 use crate::common::output_current_time;
 use crate::config::Config;
-use crate::types::{SignMerkleTreeRequest, Transaction};
+use crate::types::{SenderType, SignMerkleTreeRequest, Transaction};
 
 pub mod communication {
     tonic::include_proto!("communication");
@@ -87,7 +88,8 @@ impl SsMerkleTreeHandlerService for SsMerkleTreeHandlerLockService {
     ) -> Result<Response<GrpcResponse>, Status> {
         let request = request.into_inner();
         let root: [u8; 32] = request.root.try_into().expect("Expected a response with root of 32 bytes");
-        let signature = request.signature;
+        let signature:[u8; 96] = request.signature.try_into().expect("Expected a response with signature of 96 bytes");
+        let signature = Signature::from_bytes(&signature).expect("Failed to convert the signature bytes to Signature");
         let mut ss = self.ss_merkle_tree_handler.write().await;
         ss.handle_sign_merkle_tree_response(root, signature).await;
 
@@ -135,6 +137,21 @@ impl SsMerkleTreeHandler{
 
             transactions: txs,
             root: None,
+        }
+    }
+
+    pub fn verify_signature(&self, signature: &Signature, msg: &[u8], sender: SenderType) -> bool {
+        match sender {
+            SenderType::GroundStation => {
+                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            SenderType::SendingStation => {
+                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            SenderType::Satellite => {
+                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            _ => false,
         }
     }
 
@@ -208,7 +225,14 @@ impl SsMerkleTreeHandler{
         Ok(elapsed)
     }
 
-    pub async fn handle_sign_merkle_tree_response(&mut self, root: [u8;32], signature: Vec<u8>) {
+    pub async fn handle_sign_merkle_tree_response(&mut self, root: [u8;32], signature: Signature) {
+        if !self.verify_signature(&signature, &root, SenderType::GroundStation) {
+            eprintln!("Failed to verify the signature of the sign_merkle_tree_response");
+            for gs_pk in &self.ground_station_public_keys {
+                println!("GS PK: {:?}", gs_pk);
+            }
+            return;
+        }
         println!("Received sign_merkle_tree_response with root: {:?}", root);
         if self.root.is_none() {
             self.root = Some(root);

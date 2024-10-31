@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use anyhow::{anyhow, Result};
 use bitvec::prelude::*;
@@ -12,6 +13,13 @@ pub enum State {
     Inactive,
     Ready,
     AwaitEndReset,
+}
+
+pub enum SenderType {
+    MissionControl,
+    GroundStation,
+    SendingStation,
+    Satellite,
 }
 
 #[derive(rkyv::Archive, Clone, Debug, rkyv::Serialize, rkyv::Deserialize, PartialEq, Eq)]
@@ -157,6 +165,19 @@ pub struct SendingStationMessage {
     pub slot_id: SlotId,
     pub txroot: Vec<MultiSigned<[u8; 32]>>,
     pub prev_cr: MultiSigned<CommitRecord>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Start {
+    pub satellite_slot_assignments: BTreeMap<SlotId, PublicKey>,
+    pub sending_station_slot_assignments: BTreeMap<SlotId, Vec<PublicKey>>,
+    pub ground_station_public_keys: Vec<PublicKey>,
+    pub sending_station_public_keys: Vec<PublicKey>,
+    pub satellite_public_keys: Vec<PublicKey>,
+    pub t: u64,
+    pub f: u32,
+
+    pub genesis_record: CommitRecord,
 }
 
 #[cfg(test)]

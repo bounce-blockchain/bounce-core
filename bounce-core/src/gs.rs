@@ -1,16 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use tonic::{transport::Server, Request, Response, Status};
-use communication::{gs_service_server::{GsService, GsServiceServer}, Start, Response as GrpcResponse};
+use communication::{gs_service_server::{GsService, GsServiceServer}, Response as GrpcResponse};
 use bounce_core::config::Config;
 use tokio::runtime::Runtime;
 use std::env;
 use std::net::{SocketAddr};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use bls::min_pk::{PublicKey, SecretKey};
+use bls::min_pk::{PublicKey, SecretKey, Signature};
+use bls::min_pk::proof_of_possession::SignaturePop;
 use bounce_core::gs_mktree_handler::GsMerkleTreeHandler;
 use bounce_core::gs_mktree_handler;
-use bounce_core::types::SignedCommitRecord;
+use bounce_core::types::{SenderType, SignedCommitRecord, Start};
 use key_manager::keyloader;
 
 pub mod communication {
@@ -19,6 +20,7 @@ pub mod communication {
 
 pub struct GS {
     config: Config,
+    my_ip: String,
 
     secret_key: SecretKey,
 
@@ -39,12 +41,26 @@ pub struct GSLockService {
 impl GsService for GSLockService {
     async fn handle_start(
         &self,
-        start: Request<Start>,
+        start: Request<communication::Start>,
     ) -> Result<Response<GrpcResponse>, Status> {
-        println!("GS received a Start message from MC with t: {}", start.get_ref().t);
+        println!("GS received a Start message from MC");
         let mut gs = self.gs.write().await;
 
-        gs.start(start.into_inner());
+        let start = start.into_inner();
+        let deserialized_sigs = start.signatures.iter().map(|sig| Signature::from_bytes(&sig).unwrap()).collect::<Vec<Signature>>();
+
+        let verified = gs.verify_mission_control_signature(&deserialized_sigs, &start.start_message);
+        if !verified {
+            return Err(Status::unauthenticated(format!("Failed to verify Mission Control signatures on Sending Station: {}", gs.my_ip)));
+        }
+
+        let deserialized_start_msg = bincode::deserialize(&start.start_message);
+        if deserialized_start_msg.is_err() {
+            return Err(Status::invalid_argument("Failed to serialize start message"));
+        }
+        let deserialized_start_msg:Start = deserialized_start_msg.unwrap();
+
+        gs.start(deserialized_start_msg);
 
         let reply = GrpcResponse {
             message: "GS processed the start message".to_string(),
@@ -76,9 +92,10 @@ impl GsService for GSLockService {
 }
 
 impl GS {
-    pub fn new(config: Config, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>) -> Self {
+    pub fn new(config: Config, my_ip:String, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>) -> Self {
         GS {
             config,
+            my_ip,
             secret_key,
             ground_station_public_keys: Vec::new(),
             sending_station_public_keys: Vec::new(),
@@ -89,14 +106,48 @@ impl GS {
         }
     }
 
+    pub fn verify_signature(&self, signature: &Signature, msg: &[u8], sender: SenderType) -> bool {
+        match sender {
+            SenderType::GroundStation => {
+                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            SenderType::SendingStation => {
+                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            SenderType::Satellite => {
+                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            _ => false,
+        }
+    }
+
+    pub fn verify_mission_control_signature(&self, signatures: &[Signature], msg: &[u8]) -> bool {
+        if self.mission_control_public_keys.is_empty() || signatures.len() as f32 / (self.mission_control_public_keys.len() as f32) < self.mc_limit {
+            return false;
+        }
+        let mut verified = 0;
+        for (_, sig) in signatures.iter().enumerate() {
+            if self.mission_control_public_keys.iter().any(|pk| sig.verify(pk, msg)) {
+                verified += 1;
+            }
+        }
+        log::debug!(
+            "Verified {} out of {} received Mission Control signatures, using {} public keys",
+            verified,
+            signatures.len(),
+            self.mission_control_public_keys.len()
+        );
+        (verified as f32) / (self.mission_control_public_keys.len() as f32) >= self.mc_limit
+    }
+
     pub fn start(&mut self, start: Start) {
         log::info!(
             "Received start message with {} number of ground stations",
             start.ground_station_public_keys.len()
         );
-        self.ground_station_public_keys = start.ground_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
-        self.sending_station_public_keys = start.sending_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
-        self.satellite_public_keys = start.satellite_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
+        self.ground_station_public_keys = start.ground_station_public_keys;
+        self.sending_station_public_keys = start.sending_station_public_keys;
+        self.satellite_public_keys = start.satellite_public_keys;
         self.f = start.f;
 
         println!("GS started with f: {}", self.f);
@@ -113,9 +164,14 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let addr = "0.0.0.0:37129".to_string().parse()?;
 
     let secret_key = keyloader::read_private_key(format!("gs{:02}", index).as_str());
+    let pk = secret_key.sk_to_pk();
+    println!("GS public key: {:?}", pk);
     let mission_control_public_keys = keyloader::read_mc_public_keys(config.mc.num_keys);
 
-    let gs = GS::new(config.clone(), secret_key.clone(), mission_control_public_keys);
+    let gs_ips = config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
+    let my_ip = gs_ips[index].clone();
+
+    let gs = GS::new(config.clone(), my_ip.clone(), secret_key.clone(), mission_control_public_keys);
 
     println!("GS is listening on {}", addr);
 
@@ -124,8 +180,6 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let mut tasks = vec![];
 
     // Start a sign-merkle-request listener on each port
-    let gs_ips = config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
-    let my_ip = gs_ips[index].clone();
     let gs_map = build_tree(gs_ips, config.fanout.fanout);
     println!("GS map: {:?}", gs_map);
     for port in ports {

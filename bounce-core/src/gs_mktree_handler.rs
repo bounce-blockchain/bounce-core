@@ -7,6 +7,7 @@ use rs_merkle::MerkleTree;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinSet;
+use bls::min_pk::proof_of_possession::SecretKeyPop;
 use bls::min_pk::SecretKey;
 use crate::common::output_current_time;
 use crate::communication;
@@ -117,11 +118,16 @@ impl GsMerkleTreeHandler {
         let mt = MerkleTree::<Keccak256>::from_leaves(&hashes);
         let duration = start.elapsed();
         println!("Build MerkleTree: {:?}", duration);
+        if mt.root().is_none() {
+            println!("MerkleTree root is None. Not processing.");
+            return Ok(());
+        }
 
+        let root = mt.root().unwrap().to_vec();
         let mut client = communication::ss_merkle_tree_handler_service_client::SsMerkleTreeHandlerServiceClient::connect(format!("http://{}:37140", archived.sender_ip)).await?;
         let mut sign_mk_response = tonic::Request::new(SignMerkleTreeResponse {
-            signature: vec![],
-            root: mt.root().unwrap().to_vec(),
+            signature: self.secret_key.sign(&root).to_bytes().to_vec(),
+            root,
         });
         sign_mk_response.metadata_mut().insert("gs_ip", self.my_ip.parse().unwrap());
         client.handle_sign_merkle_tree_response(sign_mk_response).await?;

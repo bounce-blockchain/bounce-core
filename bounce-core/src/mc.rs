@@ -1,14 +1,15 @@
 use std::collections::{BTreeMap};
 use tonic::{transport::Server, Request, Response, Status};
-use communication::{mc_service_server::{McService, McServiceServer}, Start, Message, Response as GrpcResponse};
+use communication::{mc_service_server::{McService, McServiceServer}, Message, Response as GrpcResponse};
 use crate::config::Config;
 use rand::seq::SliceRandom;
 use tokio::runtime::Runtime;
 use std::env;
 use keccak_hash::{keccak};
 use bls::min_pk::{PublicKey, SecretKey};
+use bls::min_pk::proof_of_possession::SecretKeyPop;
 use bounce_core::{ResetId, SlotId};
-use bounce_core::types::{CommitRecord, State};
+use bounce_core::types::{CommitRecord, Start, State};
 use key_manager::keyloader;
 
 pub mod config;
@@ -82,40 +83,45 @@ impl MC {
             used_as_reset: false,
         };
 
-        let sending_station_slot_assignments_for_start = sending_station_slot_assignments.iter().map(|(slot_id, pks)| {
-            let public_keys = pks.iter().map(|pk| communication::PublicKey { value: Vec::from(pk.to_bytes()) }).collect();
-            (*slot_id, communication::PublicKeyList { public_keys })
-        }).collect();
-        let satellite_slot_assignments_for_start = satellite_slot_assignments.iter().map(|(slot_id, pk)| {
-            (*slot_id, communication::PublicKey { value: Vec::from(pk.to_bytes()) })
-        }).collect();
-
         let start = Start {
-            satellite_slot_assignments:satellite_slot_assignments_for_start,
-            sending_station_slot_assignments: sending_station_slot_assignments_for_start,
-            ground_station_public_keys: vec![],
-            sending_station_public_keys: vec![],
-            satellite_public_keys: vec![],
+            satellite_slot_assignments,
+            sending_station_slot_assignments,
+            ground_station_public_keys: self.ground_station_public_keys.clone(),
+            sending_station_public_keys: self.sending_public_keys.clone(),
+            satellite_public_keys: self.satellite_public_keys.clone(),
             t,
             f: 0,
-            genesis_record:bincode::serialize(&genesis_record).unwrap(),
+            genesis_record,
         };
+        let serialized_start = bincode::serialize(&start).unwrap();
+        let signatures:Vec<Vec<u8>> = self.secret_keys.iter().map(|sk| {
+            sk.sign(&serialized_start).to_bytes().to_vec()
+        }).collect();
         println!("Sending start message to all instances");
         for gs in &config.gs {
             let mut client = communication::gs_service_client::GsServiceClient::connect(format!("http://{}:37129", gs.ip)).await?;
-            let request = tonic::Request::new(start.clone());
+            let request = tonic::Request::new(communication::Start{
+                start_message: serialized_start.clone(),
+                signatures: signatures.clone(),
+            });
             let response = client.handle_start(request).await?;
             println!("Response from GS: {:?}", response.into_inner().message);
         }
         for ss in &config.ss {
             let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss.ip)).await?;
-            let request = tonic::Request::new(start.clone());
+            let request = tonic::Request::new(communication::Start{
+                start_message: serialized_start.clone(),
+                signatures: signatures.clone(),
+            });
             let response = client.handle_start(request).await?;
             println!("Response from SS: {:?}", response.into_inner().message);
         }
         for sat in &config.sat {
             let mut client = communication::sat_service_client::SatServiceClient::connect(format!("http://{}:37131", sat.ip)).await?;
-            let request = tonic::Request::new(start.clone());
+            let request = tonic::Request::new(communication::Start{
+                start_message: serialized_start.clone(),
+                signatures: signatures.clone(),
+            });
             let response = client.handle_start(request).await?;
             println!("Response from Sat: {:?}", response.into_inner().message);
         }
@@ -165,6 +171,7 @@ pub async fn run_mc(config_file: &str) -> Result<(), Box<dyn std::error::Error>>
     let mut ground_station_public_keys = Vec::new();
     for i in 0..config.mc.num_gs {
         let public_key = keyloader::read_public_key(format!("gs{:02}", i).as_str());
+        println!("GS public key: {:?}", public_key);
         ground_station_public_keys.push(public_key);
     }
 

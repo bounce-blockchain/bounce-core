@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, HashSet};
 use std::env;
 use std::sync::Arc;
 use bitvec::vec::BitVec;
-use communication::{ss_service_server::{SsService, SsServiceServer}, Start, Response as GrpcResponse};
-use bounce_core::types::{Transaction, State, Keccak256, SendingStationMessage, MultiSigned, CommitRecord};
+use communication::{ss_service_server::{SsService, SsServiceServer}, Response as GrpcResponse};
+use bounce_core::types::{Start, State, SendingStationMessage, MultiSigned, CommitRecord, SenderType};
 use bounce_core::config::Config;
 use bounce_core::{ResetId, SlotId};
 use bls::min_pk::{PublicKey, SecretKey};
@@ -49,9 +49,9 @@ pub struct SSLockService {
 impl SsService for SSLockService {
     async fn handle_start(
         &self,
-        start: Request<Start>,
+        start: Request<communication::Start>,
     ) -> Result<Response<GrpcResponse>, Status> {
-        println!("SS received a Start message from MC with t: {}", start.get_ref().t);
+        println!("SS received a Start message from MC");
 
         let (clock_send, clock_recv) = tokio::sync::mpsc::unbounded_channel();
         let (slot_send, mut slot_receive) = tokio::sync::broadcast::channel(9);
@@ -59,7 +59,21 @@ impl SsService for SSLockService {
 
         let mut ss = self.ss.write().await;
         let start = start.into_inner();
-        ss.start(start.clone(),clock_send, receiver_from_mkt_handler);
+
+        let deserialized_sigs = start.signatures.iter().map(|sig| Signature::from_bytes(&sig).unwrap()).collect::<Vec<Signature>>();
+
+        let verified = ss.verify_mission_control_signature(&deserialized_sigs, &start.start_message);
+        if !verified {
+            return Err(Status::unauthenticated(format!("Failed to verify Mission Control signatures on Sending Station: {}", ss.my_ip)));
+        }
+
+        let deserialized_start_msg = bincode::deserialize(&start.start_message);
+        if deserialized_start_msg.is_err() {
+            return Err(Status::invalid_argument("Failed to serialize start message"));
+        }
+        let deserialized_start_msg:Start = deserialized_start_msg.unwrap();
+        let t = deserialized_start_msg.t;
+        ss.start(deserialized_start_msg,clock_send, receiver_from_mkt_handler);
 
         let ss_service = self.ss.clone();
         tokio::spawn(async move {
@@ -95,7 +109,7 @@ impl SsService for SSLockService {
         let mut slot_timer = SlotClock::new(5000, 500, 4000, slot_send, clock_recv);
         tokio::spawn(async move { if (slot_timer.start().await).is_err() {} });
 
-        ss.clock_send.send(start.t).unwrap();
+        ss.clock_send.send(t).unwrap();
 
         let reply = communication::Response {
             message: "SS processed the start message".to_string(),
@@ -127,16 +141,48 @@ impl SS {
         }
     }
 
+    pub fn verify_signature(&self, signature: &Signature, msg: &[u8], sender: SenderType) -> bool {
+        match sender {
+            SenderType::GroundStation => {
+                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            SenderType::SendingStation => {
+                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            SenderType::Satellite => {
+                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            _ => false,
+        }
+    }
+
+    pub fn verify_mission_control_signature(&self, signatures: &[Signature], msg: &[u8]) -> bool {
+        if self.mission_control_public_keys.is_empty() || signatures.len() as f32 / (self.mission_control_public_keys.len() as f32) < self.mc_limit {
+            return false;
+        }
+        let mut verified = 0;
+        for (_, sig) in signatures.iter().enumerate() {
+            if self.mission_control_public_keys.iter().any(|pk| sig.verify(pk, msg)) {
+                verified += 1;
+            }
+        }
+        log::debug!(
+            "Verified {} out of {} received Mission Control signatures, using {} public keys",
+            verified,
+            signatures.len(),
+            self.mission_control_public_keys.len()
+        );
+        (verified as f32) / (self.mission_control_public_keys.len() as f32) >= self.mc_limit
+    }
+
     pub fn start(&mut self, start: Start, clock_send: tokio::sync::mpsc::UnboundedSender<u64>, receiver_from_mkt_handler: tokio::sync::mpsc::UnboundedReceiver<[u8;32]>) {
         self.state = State::Ready;
-        self.ground_station_public_keys = start.ground_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
+        self.ground_station_public_keys = start.ground_station_public_keys;
         self.ss_slot_assignments = BTreeMap::new();
         for (slot_id, public_keys) in start.sending_station_slot_assignments.iter() {
-            self.ss_slot_assignments.insert(*slot_id, HashSet::from_iter(public_keys.public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap())));
+            self.ss_slot_assignments.insert(*slot_id, HashSet::from_iter(public_keys.iter().cloned()));
         }
-        self.sat_slot_assignments = start.satellite_slot_assignments.iter().map(|(slot_id, pk)| {
-            (*slot_id, PublicKey::from_bytes(&pk.value).unwrap())
-        }).collect();
+        self.sat_slot_assignments = start.satellite_slot_assignments;
         self.f = start.f;
         self.clock_send = clock_send;
         self.receiver_from_mkt_handler = receiver_from_mkt_handler;
