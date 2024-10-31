@@ -164,8 +164,6 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let addr = "0.0.0.0:37129".to_string().parse()?;
 
     let secret_key = keyloader::read_private_key(format!("gs{:02}", index).as_str());
-    let pk = secret_key.sk_to_pk();
-    println!("GS public key: {:?}", pk);
     let mission_control_public_keys = keyloader::read_mc_public_keys(config.mc.num_keys);
 
     let gs_ips = config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();

@@ -171,7 +171,6 @@ pub async fn run_mc(config_file: &str) -> Result<(), Box<dyn std::error::Error>>
     let mut ground_station_public_keys = Vec::new();
     for i in 0..config.mc.num_gs {
         let public_key = keyloader::read_public_key(format!("gs{:02}", i).as_str());
-        println!("GS public key: {:?}", public_key);
         ground_station_public_keys.push(public_key);
     }
 
