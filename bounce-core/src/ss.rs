@@ -8,7 +8,6 @@ use bounce_core::config::Config;
 use bounce_core::{ResetId, SlotId};
 use bls::min_pk::{PublicKey, SecretKey};
 use key_manager::keyloader;
-use rayon::prelude::*;
 use tokio::runtime::{Runtime};
 use tokio::sync::RwLock;
 use tonic::{transport::Server, Request, Response, Status};

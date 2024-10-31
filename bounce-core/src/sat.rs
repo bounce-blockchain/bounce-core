@@ -1,8 +1,18 @@
 use std::collections::BTreeMap;
 use tonic::{transport::Server, Request, Response, Status};
 use communication::{sat_service_server::{SatService, SatServiceServer}, Start, Response as GrpcResponse};
-use crate::config::Config;
+use bounce_core::config::Config;
 use tokio::sync::RwLock;
+use tokio::runtime::Runtime;
+use std::env;
+use std::sync::Arc;
+use keccak_hash::keccak;
+use bls::min_pk::{PublicKey, SecretKey, Signature};
+use bls::min_pk::proof_of_possession::SecretKeyPop;
+use bounce_core::{ResetId, SlotId};
+use bounce_core::types::{CommitRecord, SendingStationMessage, SignedCommitRecord, State};
+use key_manager::keyloader;
+use slot_clock::{SlotClock, SlotMessage};
 
 pub mod communication {
     tonic::include_proto!("communication");
@@ -15,8 +25,8 @@ pub struct Sat {
     clock_send: tokio::sync::mpsc::UnboundedSender<u64>,
 
     state: State,
-    //sending_station_messages: Vec<SendingStationMessage>,
-    //dummy_sending_station_message: Option<SendingStationMessage>,
+    sending_station_messages: Vec<SendingStationMessage>,
+    dummy_sending_station_message: Option<SendingStationMessage>,
     slot_id: SlotId,
     reset_id: ResetId,
     mission_control_public_keys: Vec<PublicKey>,
@@ -125,8 +135,8 @@ impl Sat {
             slot_assignments: BTreeMap::new(),
             slot_id: 0,
             reset_id: 0,
-            // sending_station_messages: Vec::new(),
-            // dummy_sending_station_message: None,
+            sending_station_messages: Vec::new(),
+            dummy_sending_station_message: None,
             // last_positive_opt: None,
             // first_negative_opt: None,
             state: State::Inactive,
@@ -150,12 +160,77 @@ impl Sat {
     }
 
     pub fn handle_sending_station_message(&mut self, message: SendingStationMessage, signature: Signature) {
-        println!("Sat received a SendingStationMessage: {:?} with signature: {:?}", message.txroot[0].payload, signature);
+        if message.txroot.is_empty() {
+            println!("Received an empty SendingStationMessage");
+            self.dummy_sending_station_message = Some(message);
+        } else {
+            self.sending_station_messages.push(message);
+        }
     }
 
     pub async fn handle_slot_tick(&mut self) {
         self.slot_id += 1;
         println!("Slot tick. Sat is at slot {}", self.slot_id);
+        let mut cr = CommitRecord {
+            reset_id: self.reset_id,
+            slot_id: self.slot_id,
+            txroot: Vec::new(),
+            prev: [0u8; 32],
+            commit_flag: false,
+            used_as_reset: false,
+        };
+        if self.sending_station_messages.is_empty() {
+            if let Some(dummy_msg) = &self.dummy_sending_station_message {
+                let serialized_prev_cr = bincode::serialize(&dummy_msg.prev_cr.payload);
+                if serialized_prev_cr.is_err() {
+                    println!("Failed to serialize the previous commit record");
+                    return;
+                }
+                cr.prev = <[u8; 32]>::from(keccak(serialized_prev_cr.unwrap()));
+                cr.commit_flag = true;
+            }
+        } else {
+            let mut txroots = Vec::new();
+            for msg in &self.sending_station_messages {
+                let txroot = msg.txroot[0].payload.clone();
+                txroots.push(txroot);
+            }
+            cr.txroot = txroots;
+            let serialized_prev_cr = bincode::serialize(&self.sending_station_messages.last().unwrap().prev_cr.payload);
+            if serialized_prev_cr.is_err() {
+                println!("Failed to serialize the previous commit record");
+                return;
+            }
+            cr.prev = <[u8; 32]>::from(keccak(serialized_prev_cr.unwrap()));
+            cr.commit_flag = true;
+        }
+
+        let gs_ip = self.config.gs[0].ip.clone();
+
+        let signature = self.secret_key.sign(&bincode::serialize(&cr).unwrap());
+        let signed_cr = SignedCommitRecord {
+            commit_record: cr,
+            signature,
+        };
+
+        println!("Sending commit record to GS");
+        let serialized_cr = bincode::serialize(&signed_cr).unwrap();
+        let client = communication::gs_service_client::GsServiceClient::connect(format!("http://{}:37129", gs_ip)).await;
+        if client.is_err() {
+            println!("Failed to connect to GS");
+            return;
+        }
+        let mut client = client.unwrap();
+        let request = tonic::Request::new(communication::SignedCommitRecord {
+            signed_commit_record: serialized_cr,
+        });
+        let response = client.handle_commit_record(request).await;
+        if response.is_err() {
+            println!("Failed to send message to GS");
+            return;
+        }
+        let response = response.unwrap();
+        println!("Response from GS: {:?}", response.into_inner().message);
     }
 }
 
@@ -180,17 +255,6 @@ pub async fn run_sat(config_file: &str, index: usize) -> Result<(), Box<dyn std:
 
     Ok(())
 }
-
-use tokio::runtime::Runtime;
-use std::env;
-use std::sync::Arc;
-use bls::min_pk::{PublicKey, SecretKey, Signature};
-use bounce_core::{ResetId, SlotId};
-use bounce_core::types::{SendingStationMessage, State};
-use key_manager::keyloader;
-use slot_clock::{SlotClock, SlotMessage};
-
-mod config;
 
 fn main() {
     // Create a new Tokio runtime

@@ -10,6 +10,7 @@ use tokio::sync::RwLock;
 use bls::min_pk::{PublicKey, SecretKey};
 use bounce_core::gs_mktree_handler::GsMerkleTreeHandler;
 use bounce_core::gs_mktree_handler;
+use bounce_core::types::SignedCommitRecord;
 use key_manager::keyloader;
 
 pub mod communication {
@@ -51,6 +52,27 @@ impl GsService for GSLockService {
 
         Ok(Response::new(reply))
     }
+
+    async fn handle_commit_record(
+        &self,
+        request: Request<communication::SignedCommitRecord>,
+    ) -> Result<Response<GrpcResponse>, Status> {
+        let request = request.into_inner();
+        let gs = self.gs.read().await;
+
+        let deserialize = bincode::deserialize(&request.signed_commit_record);
+        if deserialize.is_err() {
+            return Err(Status::invalid_argument("Failed to deserialize the signed commit record"));
+        }
+        let signed_commit_record: SignedCommitRecord = deserialize.unwrap();
+        gs.handle_commit_record(signed_commit_record).await;
+
+        let reply = GrpcResponse {
+            message: "GS processed the commit record".to_string(),
+        };
+
+        Ok(Response::new(reply))
+    }
 }
 
 impl GS {
@@ -78,6 +100,11 @@ impl GS {
         self.f = start.f;
 
         println!("GS started with f: {}", self.f);
+    }
+
+    pub async fn handle_commit_record(&self, signed_commit_record:SignedCommitRecord){
+        let commit_record = signed_commit_record.commit_record;
+        println!("GS received a commit record from SAT with roots: {:?}", commit_record.txroot);
     }
 }
 

@@ -6,10 +6,9 @@ use rand::seq::SliceRandom;
 use tokio::runtime::Runtime;
 use std::env;
 use keccak_hash::{keccak};
-use crate::communication::CommitRecord;
 use bls::min_pk::{PublicKey, SecretKey};
 use bounce_core::{ResetId, SlotId};
-use bounce_core::types::State;
+use bounce_core::types::{CommitRecord, State};
 use key_manager::keyloader;
 
 pub mod config;
@@ -77,8 +76,8 @@ impl MC {
         let genesis_record = CommitRecord{
             reset_id: 0,
             slot_id: 0,
-            txroot: Vec::from(hash),
-            prev: vec![],
+            txroot: vec![hash],
+            prev: [0u8;32],
             commit_flag: true,
             used_as_reset: false,
         };
@@ -99,7 +98,7 @@ impl MC {
             satellite_public_keys: vec![],
             t,
             f: 0,
-            genesis_record:Some(genesis_record),
+            genesis_record:bincode::serialize(&genesis_record).unwrap(),
         };
         println!("Sending start message to all instances");
         for gs in &config.gs {
