@@ -155,7 +155,7 @@ impl GS {
 
     pub async fn handle_commit_record(&self, signed_commit_record:SignedCommitRecord){
         let commit_record = signed_commit_record.commit_record;
-        println!("GS received a commit record from SAT with roots: {:?}", commit_record.txroot);
+        println!("GS received a commit record from SAT with roots: {:?}", commit_record.txroots);
     }
 }
 

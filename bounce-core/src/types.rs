@@ -89,14 +89,14 @@ impl Hasher for Keccak256 {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct CommitRecord {
     /// Reset number
     pub reset_id: ResetId,
     /// Slot identifier
     pub slot_id: SlotId,
     /// The Transaction root hash
-    pub txroot: Vec<[u8; 32]>,
+    pub txroots: Vec<SendingStationMerkleTreeGroup>,
     // The hash of the previous commit record
     pub prev: [u8; 32],
     //true for positive and false for negative commit record
@@ -165,6 +165,12 @@ pub struct SendingStationMessage {
     pub slot_id: SlotId,
     pub txroot: Vec<MultiSigned<[u8; 32]>>,
     pub prev_cr: MultiSigned<CommitRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SendingStationMerkleTreeGroup{
+    pub txroots: Vec<MultiSigned<[u8; 32]>>,
+    pub ss_signature: Signature,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

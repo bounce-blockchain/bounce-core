@@ -10,7 +10,7 @@ use keccak_hash::keccak;
 use bls::min_pk::{PublicKey, SecretKey, Signature};
 use bls::min_pk::proof_of_possession::{SecretKeyPop, SignaturePop};
 use bounce_core::{ResetId, SlotId};
-use bounce_core::types::{CommitRecord, SenderType, SendingStationMessage, SignedCommitRecord, Start, State};
+use bounce_core::types::{CommitRecord, SenderType, SendingStationMerkleTreeGroup, SendingStationMessage, SignedCommitRecord, Start, State};
 use key_manager::keyloader;
 use slot_clock::{SlotClock, SlotMessage};
 
@@ -25,8 +25,8 @@ pub struct Sat {
     clock_send: tokio::sync::mpsc::UnboundedSender<u64>,
 
     state: State,
-    sending_station_messages: Vec<SendingStationMessage>,
-    dummy_sending_station_message: Option<SendingStationMessage>,
+    sending_station_messages: Vec<(SendingStationMessage, Signature)>,
+    dummy_sending_station_message: Option<(SendingStationMessage, Signature)>,
     slot_id: SlotId,
     reset_id: ResetId,
     mission_control_public_keys: Vec<PublicKey>,
@@ -205,9 +205,9 @@ impl Sat {
     pub fn handle_sending_station_message(&mut self, message: SendingStationMessage, signature: Signature) {
         if message.txroot.is_empty() {
             println!("Received an empty SendingStationMessage");
-            self.dummy_sending_station_message = Some(message);
+            self.dummy_sending_station_message = Some((message, signature));
         } else {
-            self.sending_station_messages.push(message);
+            self.sending_station_messages.push((message, signature));
         }
     }
 
@@ -217,14 +217,14 @@ impl Sat {
         let mut cr = CommitRecord {
             reset_id: self.reset_id,
             slot_id: self.slot_id,
-            txroot: Vec::new(),
+            txroots: Vec::new(),
             prev: [0u8; 32],
             commit_flag: false,
             used_as_reset: false,
         };
         if self.sending_station_messages.is_empty() {
             if let Some(dummy_msg) = &self.dummy_sending_station_message {
-                let serialized_prev_cr = bincode::serialize(&dummy_msg.prev_cr.payload);
+                let serialized_prev_cr = bincode::serialize(&dummy_msg.0.prev_cr.payload);
                 if serialized_prev_cr.is_err() {
                     println!("Failed to serialize the previous commit record");
                     return;
@@ -235,11 +235,13 @@ impl Sat {
         } else {
             let mut txroots = Vec::new();
             for msg in &self.sending_station_messages {
-                let txroot = msg.txroot[0].payload.clone();
-                txroots.push(txroot);
+                txroots.push(SendingStationMerkleTreeGroup {
+                    txroots: msg.0.txroot.clone(),
+                    ss_signature: msg.1,
+                });
             }
-            cr.txroot = txroots;
-            let serialized_prev_cr = bincode::serialize(&self.sending_station_messages.last().unwrap().prev_cr.payload);
+            cr.txroots = txroots;
+            let serialized_prev_cr = bincode::serialize(&self.sending_station_messages.last().unwrap().0.prev_cr.payload);
             if serialized_prev_cr.is_err() {
                 println!("Failed to serialize the previous commit record");
                 return;

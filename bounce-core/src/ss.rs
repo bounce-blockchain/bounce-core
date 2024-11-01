@@ -205,7 +205,7 @@ impl SS {
             let cr = CommitRecord {
                 reset_id: self.reset_id,
                 slot_id: self.slot_id,
-                txroot: vec![],
+                txroots: vec![],
                 prev: [0u8;32],
                 commit_flag: true,
                 used_as_reset: false,

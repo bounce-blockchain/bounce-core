@@ -72,12 +72,10 @@ impl MC {
             .as_millis()
             + 10000) as u64;
 
-        let hash = keccak("genesis-record".as_bytes()).to_fixed_bytes();
-
         let genesis_record = CommitRecord{
             reset_id: 0,
             slot_id: 0,
-            txroot: vec![hash],
+            txroots: vec![],
             prev: [0u8;32],
             commit_flag: true,
             used_as_reset: false,
