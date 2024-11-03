@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, HashSet};
 use std::env;
 use std::sync::Arc;
 use bitvec::vec::BitVec;
-use communication::{ss_service_server::{SsService, SsServiceServer}, Response as GrpcResponse};
+use keccak_hash::keccak;
+use communication::{ss_service_server::{SsService, SsServiceServer}, Response as GrpcResponse, MultiSignedCommitRecord};
 use bounce_core::types::{Start, State, SendingStationMessage, MultiSigned, CommitRecord, SenderType};
 use bounce_core::config::Config;
 use bounce_core::{ResetId, SlotId};
@@ -31,6 +32,7 @@ pub struct SS {
     state: State,
     slot_id: SlotId,
     reset_id: ResetId,
+    prev_cr: Option<MultiSigned<CommitRecord>>,
     // SlotIds to public keys of sending stations/satellties.
     ss_slot_assignments: BTreeMap<SlotId, HashSet<PublicKey>>,
     sat_slot_assignments: BTreeMap<SlotId, PublicKey>,
@@ -117,6 +119,19 @@ impl SsService for SSLockService {
 
         Ok(Response::new(reply))
     }
+
+    async fn handle_multi_signed_commit_record(&self, request: Request<MultiSignedCommitRecord>) -> Result<Response<GrpcResponse>, Status> {
+        let request = request.into_inner();
+        let mut ss = self.ss.write().await;
+        let deserialized_multi_signed_cr = bincode::deserialize(&request.multi_signed_commit_record);
+        if deserialized_multi_signed_cr.is_err() {
+            return Err(Status::invalid_argument("Failed to deserialize MultiSignedCommitRecord"));
+        }
+        ss.handle_multi_signed_commit_record(deserialized_multi_signed_cr.unwrap());
+        Ok(Response::new(GrpcResponse {
+            message: "SS processed the MultiSignedCommitRecord".to_string(),
+        }))
+    }
 }
 
 impl SS {
@@ -128,6 +143,7 @@ impl SS {
             clock_send: tokio::sync::mpsc::unbounded_channel().0,
             slot_receive: tokio::sync::broadcast::channel(1).1,
             receiver_from_mkt_handler: tokio::sync::mpsc::unbounded_channel().1,
+            prev_cr: None,
             ground_station_public_keys: vec![],
             mission_control_public_keys,
             f: 0,
@@ -193,6 +209,39 @@ impl SS {
     pub fn handle_slot_tick(&mut self) {
         self.slot_id += 1;
         println!("Slot tick. SS is at slot {}", self.slot_id);
+    }
+
+    pub fn handle_multi_signed_commit_record(&mut self, multi_signed_cr: MultiSigned<CommitRecord>) {
+        let pks_refs: Vec<&PublicKey> = self.ground_station_public_keys.iter().collect();
+        if !multi_signed_cr.verify(&pks_refs).is_ok() {
+            println!("Failed to verify CommitRecord signature");
+            return;
+        }
+
+        let cr = multi_signed_cr.payload.clone();
+        if cr.reset_id != self.reset_id {
+            println!("Received a CommitRecord with reset_id {} but expected reset_id {}", cr.reset_id, self.reset_id);
+            return;
+        }
+        if cr.slot_id != self.slot_id {
+            println!("Received a CommitRecord with slot_id {} but expected slot_id {}", cr.slot_id, self.slot_id);
+            return;
+        }
+        if self.prev_cr.is_some(){
+            let serialized_prev_cr = bincode::serialize(&self.prev_cr.as_ref().unwrap().payload);
+            if serialized_prev_cr.is_err() {
+                println!("Failed to serialize the previous commit record");
+                return;
+            }
+            if cr.prev != <[u8; 32]>::from(keccak(serialized_prev_cr.unwrap())){
+                println!("Received a CommitRecord with invalid prev hash");
+                return;
+            }
+        }
+        //do additional checks here
+
+        self.prev_cr = Some(multi_signed_cr);
+        println!("Received a Multi-Signed CommitRecord with reset_id {}, slot_id {}, prev {:?}, commit_flag {}, used_as_reset {}", cr.reset_id, cr.slot_id, cr.prev, cr.commit_flag, cr.used_as_reset);
     }
 
     pub async fn send_ss_message(&mut self) {

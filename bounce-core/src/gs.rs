@@ -6,12 +6,13 @@ use tokio::runtime::Runtime;
 use std::env;
 use std::net::{SocketAddr};
 use std::sync::Arc;
+use bitvec::bitvec;
 use tokio::sync::RwLock;
 use bls::min_pk::{PublicKey, SecretKey, Signature};
-use bls::min_pk::proof_of_possession::SignaturePop;
+use bls::min_pk::proof_of_possession::*;
 use bounce_core::gs_mktree_handler::GsMerkleTreeHandler;
 use bounce_core::gs_mktree_handler;
-use bounce_core::types::{SenderType, SignedCommitRecord, Start};
+use bounce_core::types::{MultiSigned, SenderType, SignedCommitRecord, Start};
 use key_manager::keyloader;
 
 pub mod communication {
@@ -89,10 +90,32 @@ impl GsService for GSLockService {
 
         Ok(Response::new(reply))
     }
+
+    async fn handle_sign_commit_record_request(&self, request: Request<communication::SignedCommitRecord>) -> Result<Response<communication::Signature>, Status> {
+        let request = request.into_inner();
+        let gs = self.gs.read().await;
+
+        let deserialize = bincode::deserialize(&request.signed_commit_record);
+        if deserialize.is_err() {
+            return Err(Status::invalid_argument("Failed to deserialize the signed commit record"));
+        }
+        let signed_commit_record: SignedCommitRecord = deserialize.unwrap();
+        let commit_record = signed_commit_record.commit_record;
+        let commit_record_signature = signed_commit_record.signature;
+        if !gs.verify_signature(&commit_record_signature, &bincode::serialize(&commit_record).unwrap(), SenderType::Satellite) {
+            return Err(Status::unauthenticated("Failed to verify the signature of the commit record"));
+        }
+
+        let signature = gs.secret_key.sign(&bincode::serialize(&commit_record).unwrap());
+
+        Ok(Response::new(communication::Signature {
+            value: signature.to_bytes().to_vec(),
+        }))
+    }
 }
 
 impl GS {
-    pub fn new(config: Config, my_ip:String, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>) -> Self {
+    pub fn new(config: Config, my_ip: String, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>) -> Self {
         GS {
             config,
             my_ip,
@@ -153,9 +176,41 @@ impl GS {
         println!("GS started with f: {}", self.f);
     }
 
-    pub async fn handle_commit_record(&self, signed_commit_record:SignedCommitRecord){
+    pub async fn handle_commit_record(&self, signed_commit_record: SignedCommitRecord) {
+        let serialized_signed_commit_record = bincode::serialize(&signed_commit_record).unwrap();
         let commit_record = signed_commit_record.commit_record;
         println!("GS received a commit record from SAT with roots: {:?}", commit_record.txroots);
+        println!("Send to other GSs");
+        let serialized_commit_record = bincode::serialize(&commit_record).unwrap();
+
+        let mut signatures = vec![self.secret_key.sign(&serialized_commit_record)];
+        for gs in &self.config.gs {
+            if gs.ip == self.my_ip {
+                continue;
+            }
+            let mut client = communication::gs_service_client::GsServiceClient::connect(format!("http://{}:37129", gs.ip)).await.unwrap();
+            let request = tonic::Request::new(communication::SignedCommitRecord {
+                signed_commit_record: serialized_signed_commit_record.clone(),
+            });
+            let response = client.handle_sign_commit_record_request(request).await.unwrap();
+            let response = response.into_inner();
+            let signature = Signature::from_bytes(&response.value).unwrap();
+            signatures.push(signature);
+        }
+
+        let signatures = signatures.iter().collect::<Vec<&Signature>>();
+
+        let multi_signed_commit_record = MultiSigned::new(commit_record, bitvec![1; self.config.gs.len()], &signatures);
+        println!("GSs multi signed the commit record. Sending to Sending Stations.");
+
+        for ss in &self.config.ss {
+            let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss.ip)).await.unwrap();
+            let request = tonic::Request::new(communication::MultiSignedCommitRecord {
+                multi_signed_commit_record: bincode::serialize(&multi_signed_commit_record).unwrap(),
+            });
+            let response = client.handle_multi_signed_commit_record(request).await.unwrap();
+            println!("Response from SS: {:?}", response.into_inner().message);
+        }
     }
 }
 

@@ -9,6 +9,7 @@ service MCService {
 service GSService {
     rpc HandleStart (Start) returns (Response);
     rpc HandleCommitRecord (SignedCommitRecord) returns (Response);
+    rpc HandleSignCommitRecordRequest (SignedCommitRecord) returns (Signature);
 }
 
 service SATService {
@@ -18,6 +19,7 @@ service SATService {
 
 service SSService {
     rpc HandleStart (Start) returns (Response);
+    rpc HandleMultiSignedCommitRecord (MultiSignedCommitRecord) returns (Response);
 }
 
 service SSMerkleTreeHandlerService {
@@ -47,6 +49,10 @@ message PublicKeyList {
 
 message SignedCommitRecord {
     bytes signed_commit_record = 1;
+}
+
+message MultiSignedCommitRecord {
+    bytes multi_signed_commit_record = 1;
 }
 
 message Start {
