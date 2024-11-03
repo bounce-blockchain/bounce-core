@@ -280,7 +280,7 @@ impl Sat {
             used_as_reset: false,
         };
         if self.sending_station_messages.is_empty() {
-            if let Some(dummy_msg) = &self.dummy_sending_station_message {
+            if let Some(dummy_msg) = std::mem::take(&mut self.dummy_sending_station_message) {
                 let serialized_prev_cr = bincode::serialize(&dummy_msg.0.prev_cr.payload);
                 if serialized_prev_cr.is_err() {
                     println!("Failed to serialize the previous commit record");
@@ -290,14 +290,6 @@ impl Sat {
                 cr.commit_flag = true;
             }
         } else {
-            let mut txroots = Vec::new();
-            for msg in &self.sending_station_messages {
-                txroots.push(SendingStationMerkleTreeGroup {
-                    txroots: msg.0.txroot.clone(),
-                    ss_signature: msg.1,
-                });
-            }
-            cr.txroots = txroots;
             let serialized_prev_cr = bincode::serialize(&self.sending_station_messages.last().unwrap().0.prev_cr.payload);
             if serialized_prev_cr.is_err() {
                 println!("Failed to serialize the previous commit record");
@@ -305,6 +297,14 @@ impl Sat {
             }
             cr.prev = <[u8; 32]>::from(keccak(serialized_prev_cr.unwrap()));
             cr.commit_flag = true;
+            let mut txroots = Vec::new();
+            for msg in std::mem::take(&mut self.sending_station_messages) {
+                txroots.push(SendingStationMerkleTreeGroup {
+                    txroots: msg.0.txroot,
+                    ss_signature: msg.1,
+                });
+            }
+            cr.txroots = txroots;
         }
 
         let gs_ip = self.config.gs[0].ip.clone();
