@@ -26,7 +26,7 @@ pub struct SS {
 
     clock_send: tokio::sync::mpsc::UnboundedSender<u64>,
     slot_receive: tokio::sync::broadcast::Receiver<SlotMessage>,
-    receiver_from_mkt_handler: tokio::sync::mpsc::UnboundedReceiver<[u8; 32]>,
+    receiver_from_mkt_handler: tokio::sync::mpsc::UnboundedReceiver<MultiSigned<[u8; 32]>>,
 
     secret_key: SecretKey,
     state: State,
@@ -185,7 +185,7 @@ impl SS {
         (verified as f32) / (self.mission_control_public_keys.len() as f32) >= self.mc_limit
     }
 
-    pub fn start(&mut self, start: Start, clock_send: tokio::sync::mpsc::UnboundedSender<u64>, receiver_from_mkt_handler: tokio::sync::mpsc::UnboundedReceiver<[u8;32]>) {
+    pub fn start(&mut self, start: Start, clock_send: tokio::sync::mpsc::UnboundedSender<u64>, receiver_from_mkt_handler: tokio::sync::mpsc::UnboundedReceiver<MultiSigned<[u8;32]>>) {
         self.state = State::Ready;
         self.ground_station_public_keys = start.ground_station_public_keys;
         self.ss_slot_assignments = BTreeMap::new();

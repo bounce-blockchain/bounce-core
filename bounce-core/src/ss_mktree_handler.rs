@@ -28,7 +28,7 @@ pub struct SsMerkleTreeHandler {
     pub config: Config,
     pub my_ip: String,
     pub gs_tx_receiver_ports: Vec<u16>,
-    pub sender_to_ss: UnboundedSender<[u8; 32]>,
+    pub sender_to_ss: UnboundedSender<MultiSigned<[u8; 32]>>,
 
     pub secret_key: SecretKey,
     pub ground_station_public_keys: Vec<PublicKey>,
@@ -107,7 +107,7 @@ impl SsMerkleTreeHandlerService for SsMerkleTreeHandlerLockService {
 
 impl SsMerkleTreeHandler{
 
-    pub fn new(config: Config, my_ip:String, secret_key: SecretKey, ground_station_public_keys: Vec<PublicKey>, f: u32, sender_to_ss: UnboundedSender<[u8; 32]>) -> Self {
+    pub fn new(config: Config, my_ip:String, secret_key: SecretKey, ground_station_public_keys: Vec<PublicKey>, f: u32, sender_to_ss: UnboundedSender<MultiSigned<[u8; 32]>>) -> Self {
         // Generate 1_000_000 random transactions to send to the Ground Station.
         // This is for benchmarking purposes.
         println!("Mktree_handler Generating 1_000_000 random transactions...");
@@ -237,7 +237,6 @@ impl SsMerkleTreeHandler{
         self.root_to_sigs.entry(root).or_insert(Vec::new()).push(signature);
         let sigs = self.root_to_sigs.get(&root).unwrap();
         if sigs.len() as u32 >= self.f + 1 {
-            self.processed_roots.push(root);
                 println!("Aggregating {} signatures for merkle tree", sigs.len());
                 let mut signers_bitvec = bitvec![0; self.ground_station_public_keys.len()];
                 for (i, pk) in self.ground_station_public_keys.iter().enumerate() {
@@ -264,8 +263,9 @@ impl SsMerkleTreeHandler{
                             .verify(&self.ground_station_public_keys.iter().collect::<Vec<_>>())
                     );
                     println!("Received enough signatures for the root. Queueing to send to the Satellite");
-                    // Send the root to the SS
-                    self.sender_to_ss.send(root).unwrap();
+                    self.processed_roots.push(root);
+                    // Send the multi-signed root to the SS
+                    self.sender_to_ss.send(multi_signed).unwrap();
                     println!("Aggregated signatures {:?}\n", start.elapsed());
                     self.root_to_sigs.remove(&root);
                 } else {
