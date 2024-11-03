@@ -110,6 +110,7 @@ impl SatService for SatLockService {
         &self,
         request: Request<communication::SendingStationMessage>,
     ) -> Result<Response<GrpcResponse>, Status> {
+        println!("Sat received a SendingStationMessage");
         let request = request.into_inner();
         let deserialized_ss_msg = bincode::deserialize(&request.sending_station_message);
         if deserialized_ss_msg.is_err() {
@@ -207,6 +208,7 @@ impl Sat {
             println!("Failed to verify the SendingStationMessage");
             return;
         }
+        println!("Verified the SendingStationMessage");
         let mut verified_roots = Vec::new();
         let gs_pk_refs: Vec<&PublicKey> = self.ground_station_public_keys.iter().collect();
         for root in &message.txroot {
@@ -224,6 +226,7 @@ impl Sat {
         } else {
             self.sending_station_messages.push((message, signature));
         }
+        println!("Saved a SendingStationMessage");
     }
 
     fn verify_sending_station_message(&self, message: &SendingStationMessage) -> bool {
