@@ -244,41 +244,43 @@ impl SS {
             println!("SS does not have a previous commit record to prepare a message");
             return;
         }
-        let multi_signed_root = self.receiver_from_mkt_handler.try_recv();
-        if multi_signed_root.is_ok() {
-            let root = multi_signed_root.unwrap();
-            println!("SS is sending a msg to satellite with root {:?}", root.payload);
-            let next_slot = self.slot_id + 1;
-            let sending_station_message = SendingStationMessage {
-                reset_id: self.reset_id,
-                slot_id: next_slot,
-                txroot: vec![root],
-                prev_cr: self.prev_cr.clone().unwrap(),
-            };
-            let serialized_ss_msg = bincode::serialize(&sending_station_message).unwrap();
-            let signature = self.secret_key.sign(&serialized_ss_msg);
-
-            let sat_ip = self.config.sat[0].ip.clone();
-            let sat = communication::sat_service_client::SatServiceClient::connect(format!("http://{}:37131", sat_ip)).await;
-            if sat.is_err() {
-                println!("Failed to connect to SAT");
-                return;
+        let mut multi_signed_roots = Vec::new();
+        loop {
+            let multi_signed_root = self.receiver_from_mkt_handler.try_recv();
+            if multi_signed_root.is_err() {
+                break;
             }
-            let mut sat = sat.unwrap();
-            let request = tonic::Request::new(communication::SendingStationMessage {
-                sending_station_message: serialized_ss_msg,
-                signature: Vec::from(signature.to_bytes()),
-            });
-            let response = sat.handle_sending_station_message(request).await;
-            if response.is_err() {
-                println!("Failed to send message to SAT: {:?}", response.err().unwrap());
-                return;
-            }
-            let response = response.unwrap();
-            println!("Response from SAT: {:?}", response.into_inner().message);
-        } else {
-            println!("SS does not have a root to send");
+            multi_signed_roots.push(multi_signed_root.unwrap());
         }
+        let next_slot = self.slot_id + 1;
+        let sending_station_message = SendingStationMessage {
+            reset_id: self.reset_id,
+            slot_id: next_slot,
+            txroot: multi_signed_roots,
+            prev_cr: self.prev_cr.clone().unwrap(),
+        };
+
+        let serialized_ss_msg = bincode::serialize(&sending_station_message).unwrap();
+        let signature = self.secret_key.sign(&serialized_ss_msg);
+
+        let sat_ip = self.config.sat[0].ip.clone();
+        let sat = communication::sat_service_client::SatServiceClient::connect(format!("http://{}:37131", sat_ip)).await;
+        if sat.is_err() {
+            println!("Failed to connect to SAT");
+            return;
+        }
+        let mut sat = sat.unwrap();
+        let request = tonic::Request::new(communication::SendingStationMessage {
+            sending_station_message: serialized_ss_msg,
+            signature: Vec::from(signature.to_bytes()),
+        });
+        let response = sat.handle_sending_station_message(request).await;
+        if response.is_err() {
+            println!("Failed to send message to SAT: {:?}", response.err().unwrap());
+            return;
+        }
+        let response = response.unwrap();
+        println!("Response from SAT: {:?}", response.into_inner().message);
     }
 }
 
