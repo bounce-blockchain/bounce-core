@@ -123,6 +123,9 @@ impl SatService for SatLockService {
         let signature:Signature = deserialized_sig.unwrap();
 
         let mut sat = self.sat.write().await;
+        if !sat.verify_signature(&signature, &request.sending_station_message, SenderType::SendingStation) {
+            return Err(Status::unauthenticated("Failed to verify the signature of the SendingStationMessage"));
+        }
         sat.handle_sending_station_message(sending_station_message, signature);
 
 
@@ -199,13 +202,67 @@ impl Sat {
         println!("Sat started with f: {}", self.f);
     }
 
-    pub fn handle_sending_station_message(&mut self, message: SendingStationMessage, signature: Signature) {
+    pub fn handle_sending_station_message(&mut self, mut message: SendingStationMessage, signature: Signature) {
+        if !self.verify_sending_station_message(&message, &signature) {
+            println!("Failed to verify the SendingStationMessage");
+            return;
+        }
+        let mut verified_roots = Vec::new();
+        let gs_pk_refs:Vec<&PublicKey> = self.ground_station_public_keys.iter().collect();
+        for root in &message.txroot {
+            if root.signers_bitvec.count_ones() as u32 >= self.f + 1 && root.verify(&gs_pk_refs).is_ok() {
+                verified_roots.push(root.clone());
+            } else {
+                println!("Failed to verify txroot: {:?}", root);
+                println!("# signers: {}", root.signers_bitvec.count_ones());
+            }
+        }
+        message.txroot = verified_roots;
         if message.txroot.is_empty() {
-            println!("Received an empty SendingStationMessage");
+            println!("No valid txroots found in the SendingStationMessage. Treating it as a dummy message");
             self.dummy_sending_station_message = Some((message, signature));
         } else {
             self.sending_station_messages.push((message, signature));
         }
+    }
+
+    fn verify_sending_station_message(&self, message: &SendingStationMessage, signature: &Signature) -> bool{
+        if message.slot_id != self.slot_id +1 {
+            println!("Slot ID mismatch. Expected: {}, Received: {}", self.slot_id, message.slot_id);
+            return false;
+        }
+        if message.reset_id != self.reset_id {
+            println!("Reset ID mismatch. Expected: {}, Received: {}", self.reset_id, message.reset_id);
+            return false;
+        }
+        let multi_signed_prev_commit = &message.prev_cr;
+        let gs_pk_refs:Vec<&PublicKey> = self.ground_station_public_keys.iter().collect();
+        if !(multi_signed_prev_commit.signers_bitvec.count_ones() as u32 >= self.f + 1 && multi_signed_prev_commit.verify(&gs_pk_refs).is_ok()) {
+            println!("Signatures on the previous commit record. Required: at least {}, Received: {}", self.f + 1, multi_signed_prev_commit.signers_bitvec.count_ones());
+            println!("Signature verification failed");
+            println!("trying to verify mission control signatures");
+            let mc_pk_refs:Vec<&PublicKey> = self.mission_control_public_keys.iter().collect();
+            if !multi_signed_prev_commit.verify(&mc_pk_refs).is_ok() {
+                println!("Failed to verify the previous commit record");
+                return false;
+            }
+            println!("Verified the previous commit record with Mission Control signatures");
+        }
+        let prev_cr = &multi_signed_prev_commit.payload;
+        if !prev_cr.commit_flag {
+            println!("The previous commit record is not a commit record");
+            return false;
+        }
+        if !prev_cr.used_as_reset && prev_cr.slot_id != self.slot_id {
+            println!("Slot ID mismatch. Expected: {}, Received: {}", self.slot_id, prev_cr.slot_id);
+            return false;
+        }
+        if !prev_cr.used_as_reset && prev_cr.reset_id != self.reset_id {
+            println!("Reset ID mismatch. Expected: {}, Received: {}", self.reset_id, prev_cr.reset_id);
+            return false;
+        }
+
+        true
     }
 
     pub async fn handle_slot_tick(&mut self) {
