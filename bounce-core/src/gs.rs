@@ -82,7 +82,10 @@ impl GsService for GSLockService {
             return Err(Status::invalid_argument("Failed to deserialize the signed commit record"));
         }
         let signed_commit_record: SignedCommitRecord = deserialize.unwrap();
+        let start = std::time::Instant::now();
         gs.handle_commit_record(signed_commit_record).await;
+        let elapsed = start.elapsed();
+        println!("GS processed the commit record in {:?}", elapsed);
 
         let reply = GrpcResponse {
             message: "GS processed the commit record".to_string(),
@@ -183,6 +186,7 @@ impl GS {
         println!("Send to other GSs");
         let serialized_commit_record = bincode::serialize(&commit_record).unwrap();
 
+        let start = std::time::Instant::now();
         let mut signatures = vec![self.secret_key.sign(&serialized_commit_record)];
         for gs in &self.config.gs {
             if gs.ip == self.my_ip {
@@ -197,12 +201,14 @@ impl GS {
             let signature = Signature::from_bytes(&response.value).unwrap();
             signatures.push(signature);
         }
+        let elapsed = start.elapsed();
+        println!("GSs gathered the signatures for commit record in {:?}", elapsed);
 
         let signatures = signatures.iter().collect::<Vec<&Signature>>();
 
         let multi_signed_commit_record = MultiSigned::new(commit_record, bitvec![1; self.config.gs.len()], &signatures);
         println!("GSs multi signed the commit record. Sending to Sending Stations.");
-
+        let start = std::time::Instant::now();
         for ss in &self.config.ss {
             let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss.ip)).await.unwrap();
             let request = tonic::Request::new(communication::MultiSignedCommitRecord {
@@ -211,6 +217,8 @@ impl GS {
             let response = client.handle_multi_signed_commit_record(request).await.unwrap();
             println!("Response from SS: {:?}", response.into_inner().message);
         }
+        let elapsed = start.elapsed();
+        println!("GSs sent the multi signed commit record to SSs in {:?}", elapsed);
     }
 }
 

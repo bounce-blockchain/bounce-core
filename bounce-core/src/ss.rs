@@ -127,9 +127,9 @@ impl SsService for SSLockService {
         if deserialized_multi_signed_cr.is_err() {
             return Err(Status::invalid_argument("Failed to deserialize MultiSignedCommitRecord"));
         }
-        ss.handle_multi_signed_commit_record(deserialized_multi_signed_cr.unwrap());
+        let verified = ss.handle_multi_signed_commit_record(deserialized_multi_signed_cr.unwrap());
         Ok(Response::new(GrpcResponse {
-            message: "SS processed the MultiSignedCommitRecord".to_string(),
+            message: format!("SS processed the MultiSignedCommitRecord: {}", verified),
         }))
     }
 }
@@ -211,37 +211,39 @@ impl SS {
         println!("Slot tick. SS is at slot {}", self.slot_id);
     }
 
-    pub fn handle_multi_signed_commit_record(&mut self, multi_signed_cr: MultiSigned<CommitRecord>) {
+    pub fn handle_multi_signed_commit_record(&mut self, multi_signed_cr: MultiSigned<CommitRecord>) -> bool {
         let pks_refs: Vec<&PublicKey> = self.ground_station_public_keys.iter().collect();
         if !multi_signed_cr.verify(&pks_refs).is_ok() {
             println!("Failed to verify CommitRecord signature");
-            return;
+            return false;
         }
 
         let cr = multi_signed_cr.payload.clone();
         if cr.reset_id != self.reset_id {
             println!("Received a CommitRecord with reset_id {} but expected reset_id {}", cr.reset_id, self.reset_id);
-            return;
+            return false;
         }
         if cr.slot_id != self.slot_id {
             println!("Received a CommitRecord with slot_id {} but expected slot_id {}", cr.slot_id, self.slot_id);
-            return;
+            return false;
         }
         if self.prev_cr.is_some(){
             let serialized_prev_cr = bincode::serialize(&self.prev_cr.as_ref().unwrap().payload);
             if serialized_prev_cr.is_err() {
                 println!("Failed to serialize the previous commit record");
-                return;
+                return false;
             }
             if cr.prev != <[u8; 32]>::from(keccak(serialized_prev_cr.unwrap())){
                 println!("Received a CommitRecord with invalid prev hash");
-                return;
+                return false;
             }
         }
         //do additional checks here
 
         self.prev_cr = Some(multi_signed_cr);
         println!("Received a Multi-Signed CommitRecord with reset_id {}, slot_id {}, prev {:?}, commit_flag {}, used_as_reset {}", cr.reset_id, cr.slot_id, cr.prev, cr.commit_flag, cr.used_as_reset);
+
+        true
     }
 
     pub async fn send_ss_message(&mut self) {
