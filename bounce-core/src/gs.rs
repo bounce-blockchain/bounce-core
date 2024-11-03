@@ -138,10 +138,10 @@ impl GS {
                 self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
             }
             SenderType::SendingStation => {
-                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+                self.sending_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
             }
             SenderType::Satellite => {
-                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+                self.satellite_public_keys.iter().any(|pk| signature.verify(pk, msg))
             }
             _ => false,
         }
