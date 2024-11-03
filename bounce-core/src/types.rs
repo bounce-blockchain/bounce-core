@@ -76,7 +76,7 @@ pub struct SignMerkleTreeRequest {
     pub sender_ip: String,
 }
 
-#[derive(Clone,Serialize,Deserialize,Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Keccak256 {}
 
 impl Hasher for Keccak256 {
@@ -168,7 +168,7 @@ pub struct SendingStationMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SendingStationMerkleTreeGroup{
+pub struct SendingStationMerkleTreeGroup {
     pub txroots: Vec<MultiSigned<[u8; 32]>>,
     pub ss_signature: Signature,
 }

@@ -100,7 +100,7 @@ impl GsMerkleTreeHandler {
 
         output_current_time("Received sign_merkle_tree_request");
 
-        if archived.txs.len() == 0 {
+        if archived.txs.is_empty() {
             println!("Received an empty sign_merkle_tree_request. Not processing.");
             return Ok(());
         }

@@ -49,7 +49,6 @@ pub fn run_grpc_server(ss_merkle_tree_handler: Arc<RwLock<SsMerkleTreeHandler>>,
         ss_merkle_tree_handler,
     };
 
-    let addr = addr;
     let svc = SsMerkleTreeHandlerServiceServer::new(ss_merkle_tree_handler_lock_service);
 
     println!("SsMerkleTreeHandlerService listening on {}", addr);
@@ -92,7 +91,7 @@ impl SsMerkleTreeHandlerService for SsMerkleTreeHandlerLockService {
     ) -> Result<Response<GrpcResponse>, Status> {
         let request = request.into_inner();
         let root: [u8; 32] = request.root.try_into().expect("Expected a response with root of 32 bytes");
-        let signature:[u8; 96] = request.signature.try_into().expect("Expected a response with signature of 96 bytes");
+        let signature: [u8; 96] = request.signature.try_into().expect("Expected a response with signature of 96 bytes");
         let signature = Signature::from_bytes(&signature).expect("Failed to convert the signature bytes to Signature");
         let mut ss = self.ss_merkle_tree_handler.write().await;
         ss.handle_sign_merkle_tree_response(root, signature).await;
@@ -105,9 +104,8 @@ impl SsMerkleTreeHandlerService for SsMerkleTreeHandlerLockService {
     }
 }
 
-impl SsMerkleTreeHandler{
-
-    pub fn new(config: Config, my_ip:String, secret_key: SecretKey, ground_station_public_keys: Vec<PublicKey>, f: u32, sender_to_ss: UnboundedSender<MultiSigned<[u8; 32]>>) -> Self {
+impl SsMerkleTreeHandler {
+    pub fn new(config: Config, my_ip: String, secret_key: SecretKey, ground_station_public_keys: Vec<PublicKey>, f: u32, sender_to_ss: UnboundedSender<MultiSigned<[u8; 32]>>) -> Self {
         // Generate 1_000_000 random transactions to send to the Ground Station.
         // This is for benchmarking purposes.
         println!("Mktree_handler Generating 1_000_000 random transactions...");
@@ -223,7 +221,7 @@ impl SsMerkleTreeHandler{
         Ok(elapsed)
     }
 
-    pub async fn handle_sign_merkle_tree_response(&mut self, root: [u8;32], signature: Signature) {
+    pub async fn handle_sign_merkle_tree_response(&mut self, root: [u8; 32], signature: Signature) {
         let start = std::time::Instant::now();
         if !self.verify_signature(&signature, &root, SenderType::GroundStation) {
             eprintln!("Failed to verify the signature of the sign_merkle_tree_response");
@@ -234,43 +232,43 @@ impl SsMerkleTreeHandler{
             println!("Already process this root.");
             return;
         }
-        self.root_to_sigs.entry(root).or_insert(Vec::new()).push(signature);
+        self.root_to_sigs.entry(root).or_default().push(signature);
         let sigs = self.root_to_sigs.get(&root).unwrap();
         if sigs.len() as u32 >= self.f + 1 {
-                println!("Aggregating {} signatures for merkle tree", sigs.len());
-                let mut signers_bitvec = bitvec![0; self.ground_station_public_keys.len()];
-                for (i, pk) in self.ground_station_public_keys.iter().enumerate() {
-                    for sig in sigs.iter() {
-                        if sig.verify(pk, &bincode::serialize(&root).unwrap()) {
-                            signers_bitvec.set(i, true);
-                            println!("Signature verified for ground station {}", i);
-                            break;
-                        }
+            println!("Aggregating {} signatures for merkle tree", sigs.len());
+            let mut signers_bitvec = bitvec![0; self.ground_station_public_keys.len()];
+            for (i, pk) in self.ground_station_public_keys.iter().enumerate() {
+                for sig in sigs.iter() {
+                    if sig.verify(pk, &bincode::serialize(&root).unwrap()) {
+                        signers_bitvec.set(i, true);
+                        println!("Signature verified for ground station {}", i);
+                        break;
                     }
                 }
-                // Make sure that f+1 distinct and known ground stations signed the merkle tree
-                if signers_bitvec.count_ones() as u32 >= self.f + 1 {
-                    let sigs_refs = sigs.iter().collect::<Vec<_>>();
-                    let multi_signed = MultiSigned::new(
-                        root,
-                        signers_bitvec,
-                        &sigs_refs,
-                    );
-
-                    println!(
-                        "MultiSigned MerkleTree verified: {:?}",
-                        multi_signed
-                            .verify(&self.ground_station_public_keys.iter().collect::<Vec<_>>())
-                    );
-                    println!("Received enough signatures for the root. Queueing to send to the Satellite");
-                    self.processed_roots.push(root);
-                    // Send the multi-signed root to the SS
-                    self.sender_to_ss.send(multi_signed).unwrap();
-                    println!("Aggregated signatures {:?}\n", start.elapsed());
-                    self.root_to_sigs.remove(&root);
-                } else {
-                    println!("f+1 check failed. Duplicate or unknown signatures for merkle tree");
-                }
             }
+            // Make sure that f+1 distinct and known ground stations signed the merkle tree
+            if signers_bitvec.count_ones() as u32 >= self.f + 1 {
+                let sigs_refs = sigs.iter().collect::<Vec<_>>();
+                let multi_signed = MultiSigned::new(
+                    root,
+                    signers_bitvec,
+                    &sigs_refs,
+                );
+
+                println!(
+                    "MultiSigned MerkleTree verified: {:?}",
+                    multi_signed
+                        .verify(&self.ground_station_public_keys.iter().collect::<Vec<_>>())
+                );
+                println!("Received enough signatures for the root. Queueing to send to the Satellite");
+                self.processed_roots.push(root);
+                // Send the multi-signed root to the SS
+                self.sender_to_ss.send(multi_signed).unwrap();
+                println!("Aggregated signatures {:?}\n", start.elapsed());
+                self.root_to_sigs.remove(&root);
+            } else {
+                println!("f+1 check failed. Duplicate or unknown signatures for merkle tree");
+            }
+        }
     }
 }

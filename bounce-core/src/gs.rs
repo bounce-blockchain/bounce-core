@@ -59,7 +59,7 @@ impl GsService for GSLockService {
         if deserialized_start_msg.is_err() {
             return Err(Status::invalid_argument("Failed to serialize start message"));
         }
-        let deserialized_start_msg:Start = deserialized_start_msg.unwrap();
+        let deserialized_start_msg: Start = deserialized_start_msg.unwrap();
 
         gs.start(deserialized_start_msg);
 
@@ -182,7 +182,7 @@ impl GS {
     pub async fn handle_commit_record(&self, signed_commit_record: SignedCommitRecord) {
         let serialized_signed_commit_record = bincode::serialize(&signed_commit_record).unwrap();
         let commit_record = signed_commit_record.commit_record;
-        println!("GS received a commit record from SAT with roots: {:?}", commit_record.txroots);
+        println!("GS received a commit record from SAT");
         println!("Send to other GSs");
         let serialized_commit_record = bincode::serialize(&commit_record).unwrap();
 
@@ -259,7 +259,7 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     Ok(())
 }
 
-fn build_tree(gs_ips:Vec<String>, fanout: usize) -> HashMap<String, HashSet<String>> {
+fn build_tree(gs_ips: Vec<String>, fanout: usize) -> HashMap<String, HashSet<String>> {
     let mut tree: HashMap<String, HashSet<String>> = HashMap::new();
     let n = gs_ips.len();
     for i in 1..=n {
@@ -271,7 +271,7 @@ fn build_tree(gs_ips:Vec<String>, fanout: usize) -> HashMap<String, HashSet<Stri
                 break;
             }
 
-            tree.entry(gs_ips[i-1].clone()).or_insert_with(HashSet::new).insert(gs_ips[child-1].clone());
+            tree.entry(gs_ips[i - 1].clone()).or_insert_with(HashSet::new).insert(gs_ips[child - 1].clone());
         }
     }
 

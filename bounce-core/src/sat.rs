@@ -71,7 +71,7 @@ impl SatService for SatLockService {
         let deserialized_start_msg: bounce_core::types::Start = deserialized_start_msg.unwrap();
 
         let t = deserialized_start_msg.t;
-        sat.start(deserialized_start_msg,clock_send);
+        sat.start(deserialized_start_msg, clock_send);
 
         let sat_service = self.sat.clone();
         tokio::spawn(async move {
@@ -115,12 +115,12 @@ impl SatService for SatLockService {
         if deserialized_ss_msg.is_err() {
             return Err(Status::invalid_argument("Failed to deserialize SendingStationMessage"));
         }
-        let sending_station_message:SendingStationMessage = deserialized_ss_msg.unwrap();
+        let sending_station_message: SendingStationMessage = deserialized_ss_msg.unwrap();
         let deserialized_sig = Signature::from_bytes(&request.signature);
         if deserialized_sig.is_err() {
             return Err(Status::invalid_argument("Failed to deserialize Signature"));
         }
-        let signature:Signature = deserialized_sig.unwrap();
+        let signature: Signature = deserialized_sig.unwrap();
 
         let mut sat = self.sat.write().await;
         if !sat.verify_signature(&signature, &request.sending_station_message, SenderType::SendingStation) {
@@ -203,12 +203,12 @@ impl Sat {
     }
 
     pub fn handle_sending_station_message(&mut self, mut message: SendingStationMessage, signature: Signature) {
-        if !self.verify_sending_station_message(&message, &signature) {
+        if !self.verify_sending_station_message(&message) {
             println!("Failed to verify the SendingStationMessage");
             return;
         }
         let mut verified_roots = Vec::new();
-        let gs_pk_refs:Vec<&PublicKey> = self.ground_station_public_keys.iter().collect();
+        let gs_pk_refs: Vec<&PublicKey> = self.ground_station_public_keys.iter().collect();
         for root in &message.txroot {
             if root.signers_bitvec.count_ones() as u32 >= self.f + 1 && root.verify(&gs_pk_refs).is_ok() {
                 verified_roots.push(root.clone());
@@ -226,8 +226,8 @@ impl Sat {
         }
     }
 
-    fn verify_sending_station_message(&self, message: &SendingStationMessage, signature: &Signature) -> bool{
-        if message.slot_id != self.slot_id +1 {
+    fn verify_sending_station_message(&self, message: &SendingStationMessage) -> bool {
+        if message.slot_id != self.slot_id + 1 {
             println!("Slot ID mismatch. Expected: {}, Received: {}", self.slot_id, message.slot_id);
             return false;
         }
@@ -236,12 +236,12 @@ impl Sat {
             return false;
         }
         let multi_signed_prev_commit = &message.prev_cr;
-        let gs_pk_refs:Vec<&PublicKey> = self.ground_station_public_keys.iter().collect();
+        let gs_pk_refs: Vec<&PublicKey> = self.ground_station_public_keys.iter().collect();
         if !(multi_signed_prev_commit.signers_bitvec.count_ones() as u32 >= self.f + 1 && multi_signed_prev_commit.verify(&gs_pk_refs).is_ok()) {
             println!("Signatures on the previous commit record. Required: at least {}, Received: {}", self.f + 1, multi_signed_prev_commit.signers_bitvec.count_ones());
             println!("Signature verification failed");
             println!("trying to verify mission control signatures");
-            let mc_pk_refs:Vec<&PublicKey> = self.mission_control_public_keys.iter().collect();
+            let mc_pk_refs: Vec<&PublicKey> = self.mission_control_public_keys.iter().collect();
             if !multi_signed_prev_commit.verify(&mc_pk_refs).is_ok() {
                 println!("Failed to verify the previous commit record");
                 return false;
@@ -341,7 +341,7 @@ pub async fn run_sat(config_file: &str, index: usize) -> Result<(), Box<dyn std:
     let secret_key = keyloader::read_private_key(format!("sat{:02}", index).as_str());
     let mission_control_public_keys = keyloader::read_mc_public_keys(config.mc.num_keys);
 
-    let sat = Sat::new(config,secret_key, mission_control_public_keys);
+    let sat = Sat::new(config, secret_key, mission_control_public_keys);
 
     println!("Sat is listening on {}", addr);
 

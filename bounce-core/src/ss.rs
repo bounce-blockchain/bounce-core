@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 use std::env;
 use std::sync::Arc;
-use bitvec::vec::BitVec;
 use keccak_hash::keccak;
 use communication::{ss_service_server::{SsService, SsServiceServer}, Response as GrpcResponse, MultiSignedCommitRecord};
 use bounce_core::types::{Start, State, SendingStationMessage, MultiSigned, CommitRecord, SenderType};
@@ -40,7 +39,6 @@ pub struct SS {
     mission_control_public_keys: Vec<PublicKey>,
     f: u32,
     mc_limit: f32, // The fraction of Mission Control signatures required to accept a message. Default is 0.7.
-
 }
 
 pub struct SSLockService {
@@ -73,9 +71,9 @@ impl SsService for SSLockService {
         if deserialized_start_msg.is_err() {
             return Err(Status::invalid_argument("Failed to serialize start message"));
         }
-        let deserialized_start_msg:Start = deserialized_start_msg.unwrap();
+        let deserialized_start_msg: Start = deserialized_start_msg.unwrap();
         let t = deserialized_start_msg.t;
-        ss.start(deserialized_start_msg,clock_send, receiver_from_mkt_handler);
+        ss.start(deserialized_start_msg, clock_send, receiver_from_mkt_handler);
 
         let ss_service = self.ss.clone();
         tokio::spawn(async move {
@@ -135,7 +133,7 @@ impl SsService for SSLockService {
 }
 
 impl SS {
-    pub fn new(config: Config, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>, my_ip:String) -> Self {
+    pub fn new(config: Config, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>, my_ip: String) -> Self {
         SS {
             config,
             secret_key,
@@ -185,7 +183,7 @@ impl SS {
         (verified as f32) / (self.mission_control_public_keys.len() as f32) >= self.mc_limit
     }
 
-    pub fn start(&mut self, start: Start, clock_send: tokio::sync::mpsc::UnboundedSender<u64>, receiver_from_mkt_handler: tokio::sync::mpsc::UnboundedReceiver<MultiSigned<[u8;32]>>) {
+    pub fn start(&mut self, start: Start, clock_send: tokio::sync::mpsc::UnboundedSender<u64>, receiver_from_mkt_handler: tokio::sync::mpsc::UnboundedReceiver<MultiSigned<[u8; 32]>>) {
         self.state = State::Ready;
         self.ground_station_public_keys = start.ground_station_public_keys;
         self.ss_slot_assignments = BTreeMap::new();
@@ -222,13 +220,13 @@ impl SS {
             println!("Received a CommitRecord with slot_id {} but expected slot_id {}", cr.slot_id, self.slot_id);
             return false;
         }
-        if self.prev_cr.is_some(){
+        if self.prev_cr.is_some() {
             let serialized_prev_cr = bincode::serialize(&self.prev_cr.as_ref().unwrap().payload);
             if serialized_prev_cr.is_err() {
                 println!("Failed to serialize the previous commit record");
                 return false;
             }
-            if cr.prev != <[u8; 32]>::from(keccak(serialized_prev_cr.unwrap())){
+            if cr.prev != <[u8; 32]>::from(keccak(serialized_prev_cr.unwrap())) {
                 println!("Received a CommitRecord with invalid prev hash");
                 return false;
             }
@@ -278,7 +276,6 @@ impl SS {
             }
             let response = response.unwrap();
             println!("Response from SAT: {:?}", response.into_inner().message);
-
         } else {
             println!("SS does not have a root to send");
         }
