@@ -5,11 +5,11 @@ use crate::config::Config;
 use rand::seq::SliceRandom;
 use tokio::runtime::Runtime;
 use std::env;
-use keccak_hash::{keccak};
-use bls::min_pk::{PublicKey, SecretKey};
+use bitvec::bitvec;
+use bls::min_pk::{PublicKey, SecretKey, Signature};
 use bls::min_pk::proof_of_possession::SecretKeyPop;
 use bounce_core::{ResetId, SlotId};
-use bounce_core::types::{CommitRecord, Start, State};
+use bounce_core::types::{CommitRecord, MultiSigned, Start, State};
 use key_manager::keyloader;
 
 pub mod config;
@@ -80,6 +80,12 @@ impl MC {
             commit_flag: true,
             used_as_reset: false,
         };
+        let serialized_genesis_record = bincode::serialize(&genesis_record).unwrap();
+        let signatures:Vec<Signature> = self.secret_keys.iter().map(|sk| {
+            sk.sign(&serialized_genesis_record)
+        }).collect();
+        let sig_refs:Vec<&Signature> = signatures.iter().collect();
+        let multi_signed_genesis_record = MultiSigned::new(genesis_record,bitvec!(1; self.secret_keys.len()), &sig_refs);
 
         let start = Start {
             satellite_slot_assignments,
@@ -89,7 +95,7 @@ impl MC {
             satellite_public_keys: self.satellite_public_keys.clone(),
             t,
             f: 0,
-            genesis_record,
+            genesis_record:multi_signed_genesis_record,
         };
         let serialized_start = bincode::serialize(&start).unwrap();
         let signatures:Vec<Vec<u8>> = self.secret_keys.iter().map(|sk| {

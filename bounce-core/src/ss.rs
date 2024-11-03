@@ -202,6 +202,7 @@ impl SS {
         self.f = start.f;
         self.clock_send = clock_send;
         self.receiver_from_mkt_handler = receiver_from_mkt_handler;
+        self.prev_cr = Some(start.genesis_record);
 
         println!("SS started with f: {}", self.f);
     }

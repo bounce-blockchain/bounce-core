@@ -183,7 +183,7 @@ pub struct Start {
     pub t: u64,
     pub f: u32,
 
-    pub genesis_record: CommitRecord,
+    pub genesis_record: MultiSigned<CommitRecord>, //this should be signed by the mission control.
 }
 
 #[cfg(test)]
