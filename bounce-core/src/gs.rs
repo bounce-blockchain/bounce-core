@@ -247,7 +247,7 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     println!("GS map: {:?}", gs_map);
     for port in ports {
         let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
-        let gs_mktree_handler = GsMerkleTreeHandler::new(secret_key.clone(), my_ip.clone());
+        let gs_mktree_handler = GsMerkleTreeHandler::new(secret_key.clone(), my_ip.clone(), gs_map.clone());
         tasks.push(tokio::task::spawn(gs_mktree_handler::run_listener(gs_mktree_handler, addr)));
     }
 

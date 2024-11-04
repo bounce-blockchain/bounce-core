@@ -24,11 +24,11 @@ pub struct GsMerkleTreeHandler {
 }
 
 impl GsMerkleTreeHandler {
-    pub fn new(secret_key: SecretKey, my_ip:String) -> Self {
+    pub fn new(secret_key: SecretKey, my_ip:String, gs_map:HashMap<String, HashSet<String>>) -> Self {
         GsMerkleTreeHandler {
             secret_key,
             my_ip,
-            gs_map: HashMap::new(),
+            gs_map,
         }
     }
 
