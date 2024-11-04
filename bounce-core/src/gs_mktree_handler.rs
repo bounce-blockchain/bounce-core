@@ -1,14 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::Arc;
+
 use keccak_hash::keccak;
 use rayon::prelude::*;
 use rs_merkle::MerkleTree;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinSet;
+
 use bls::min_pk::proof_of_possession::SecretKeyPop;
 use bls::min_pk::SecretKey;
+
 use crate::common::output_current_time;
 use crate::communication;
 use crate::communication::SignMerkleTreeResponse;

@@ -2,20 +2,23 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+
 use bitvec::bitvec;
-use communication::{ss_merkle_tree_handler_service_server::{SsMerkleTreeHandlerService, SsMerkleTreeHandlerServiceServer}, SignMerkleTreeResponse, Response as GrpcResponse};
 use rand::Rng;
 use rkyv::rancor::Error;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::{UnboundedSender};
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
 use tokio::task::JoinSet;
 use tonic::{Request, Response, Status};
 use tonic::transport::Server;
+
 use bls::min_pk::{PublicKey, SecretKey, Signature};
 use bls::min_pk::proof_of_possession::SignaturePop;
+use communication::{Response as GrpcResponse, SignMerkleTreeResponse, ss_merkle_tree_handler_service_server::{SsMerkleTreeHandlerService, SsMerkleTreeHandlerServiceServer}};
 use slot_clock::SlotMessage;
+
 use crate::common::output_current_time;
 use crate::config::Config;
 use crate::types::{MultiSigned, SenderType, SignMerkleTreeRequest, Transaction};

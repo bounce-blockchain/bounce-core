@@ -1,16 +1,18 @@
-use std::collections::{BTreeMap};
-use tonic::{transport::Server, Request, Response, Status};
-use communication::{sat_service_server::{SatService, SatServiceServer}, Response as GrpcResponse};
-use bounce_core::config::Config;
-use tokio::sync::RwLock;
-use tokio::runtime::Runtime;
+use std::collections::BTreeMap;
 use std::env;
 use std::sync::Arc;
+
 use keccak_hash::keccak;
+use tokio::runtime::Runtime;
+use tokio::sync::RwLock;
+use tonic::{Request, Response, Status, transport::Server};
+
 use bls::min_pk::{PublicKey, SecretKey, Signature};
 use bls::min_pk::proof_of_possession::{SecretKeyPop, SignaturePop};
 use bounce_core::{ResetId, SlotId};
+use bounce_core::config::Config;
 use bounce_core::types::{CommitRecord, SenderType, SendingStationMerkleTreeGroup, SendingStationMessage, SignedCommitRecord, Start, State};
+use communication::{Response as GrpcResponse, sat_service_server::{SatService, SatServiceServer}};
 use key_manager::keyloader;
 use slot_clock::{SlotClock, SlotMessage};
 
@@ -57,7 +59,7 @@ impl SatService for SatLockService {
         let (slot_send, mut slot_receive) = tokio::sync::broadcast::channel(9);
 
         let start = start.into_inner();
-        let deserialized_sigs = start.signatures.iter().map(|sig| Signature::from_bytes(&sig).unwrap()).collect::<Vec<Signature>>();
+        let deserialized_sigs = start.signatures.iter().map(|sig| Signature::from_bytes(sig).unwrap()).collect::<Vec<Signature>>();
 
         let verified = sat.verify_mission_control_signature(&deserialized_sigs, &start.start_message);
         if !verified {
@@ -79,12 +81,9 @@ impl SatService for SatLockService {
                 let slog_msg = slot_receive.recv().await;
                 match slog_msg {
                     Ok(msg) => {
-                        match msg {
-                            SlotMessage::SlotTick => {
-                                let mut sat = sat_service.write().await;
-                                sat.handle_slot_tick().await;
-                            }
-                            _ => {}
+                        if msg == SlotMessage::SlotTick {
+                            let mut sat = sat_service.write().await;
+                            sat.handle_slot_tick().await;
                         }
                     }
                     Err(e) => {
@@ -178,7 +177,7 @@ impl Sat {
             return false;
         }
         let mut verified = 0;
-        for (_, sig) in signatures.iter().enumerate() {
+        for sig in signatures.iter() {
             if self.mission_control_public_keys.iter().any(|pk| sig.verify(pk, msg)) {
                 verified += 1;
             }
@@ -248,7 +247,7 @@ impl Sat {
             println!("Signature verification failed");
             println!("trying to verify mission control signatures");
             let mc_pk_refs: Vec<&PublicKey> = self.mission_control_public_keys.iter().collect();
-            if !multi_signed_prev_commit.verify(&mc_pk_refs).is_ok() {
+            if multi_signed_prev_commit.verify(&mc_pk_refs).is_err() {
                 println!("Failed to verify the previous commit record");
                 return false;
             }

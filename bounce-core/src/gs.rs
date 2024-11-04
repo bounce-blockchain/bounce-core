@@ -1,18 +1,20 @@
 use std::collections::{HashMap, HashSet};
-use tonic::{transport::Server, Request, Response, Status};
-use communication::{gs_service_server::{GsService, GsServiceServer}, Response as GrpcResponse};
-use bounce_core::config::Config;
-use tokio::runtime::Runtime;
 use std::env;
-use std::net::{SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
+
 use bitvec::bitvec;
+use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
+use tonic::{Request, Response, Status, transport::Server};
+
 use bls::min_pk::{PublicKey, SecretKey, Signature};
 use bls::min_pk::proof_of_possession::*;
-use bounce_core::gs_mktree_handler::GsMerkleTreeHandler;
+use bounce_core::config::Config;
 use bounce_core::gs_mktree_handler;
+use bounce_core::gs_mktree_handler::GsMerkleTreeHandler;
 use bounce_core::types::{MultiSigned, SenderType, SignedCommitRecord, Start};
+use communication::{gs_service_server::{GsService, GsServiceServer}, Response as GrpcResponse};
 use key_manager::keyloader;
 
 pub mod communication {
@@ -48,7 +50,7 @@ impl GsService for GSLockService {
         let mut gs = self.gs.write().await;
 
         let start = start.into_inner();
-        let deserialized_sigs = start.signatures.iter().map(|sig| Signature::from_bytes(&sig).unwrap()).collect::<Vec<Signature>>();
+        let deserialized_sigs = start.signatures.iter().map(|sig| Signature::from_bytes(sig).unwrap()).collect::<Vec<Signature>>();
 
         let verified = gs.verify_mission_control_signature(&deserialized_sigs, &start.start_message);
         if !verified {
@@ -152,7 +154,7 @@ impl GS {
             return false;
         }
         let mut verified = 0;
-        for (_, sig) in signatures.iter().enumerate() {
+        for sig in signatures.iter() {
             if self.mission_control_public_keys.iter().any(|pk| sig.verify(pk, msg)) {
                 verified += 1;
             }
@@ -271,7 +273,7 @@ fn build_tree(gs_ips: Vec<String>, fanout: usize) -> HashMap<String, HashSet<Str
                 break;
             }
 
-            tree.entry(gs_ips[i - 1].clone()).or_insert_with(HashSet::new).insert(gs_ips[child - 1].clone());
+            tree.entry(gs_ips[i - 1].clone()).or_default().insert(gs_ips[child - 1].clone());
         }
     }
 

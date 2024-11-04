@@ -1,16 +1,19 @@
-use std::collections::{BTreeMap};
-use tonic::{transport::Server, Request, Response, Status};
-use communication::{mc_service_server::{McService, McServiceServer}, Message, Response as GrpcResponse};
-use crate::config::Config;
+use std::collections::BTreeMap;
+use std::env;
+
+use bitvec::bitvec;
 use rand::seq::SliceRandom;
 use tokio::runtime::Runtime;
-use std::env;
-use bitvec::bitvec;
+use tonic::{Request, Response, Status, transport::Server};
+
 use bls::min_pk::{PublicKey, SecretKey, Signature};
 use bls::min_pk::proof_of_possession::SecretKeyPop;
 use bounce_core::{ResetId, SlotId};
 use bounce_core::types::{CommitRecord, MultiSigned, Start, State};
+use communication::{mc_service_server::{McService, McServiceServer}, Message, Response as GrpcResponse};
 use key_manager::keyloader;
+
+use crate::config::Config;
 
 pub mod config;
 

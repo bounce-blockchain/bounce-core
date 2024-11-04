@@ -1,17 +1,19 @@
 use std::collections::{BTreeMap, HashSet};
 use std::env;
 use std::sync::Arc;
+
 use keccak_hash::keccak;
-use communication::{ss_service_server::{SsService, SsServiceServer}, Response as GrpcResponse, MultiSignedCommitRecord};
-use bounce_core::types::{Start, State, SendingStationMessage, MultiSigned, CommitRecord, SenderType};
-use bounce_core::config::Config;
-use bounce_core::{ResetId, SlotId};
-use bls::min_pk::{PublicKey, SecretKey};
-use key_manager::keyloader;
-use tokio::runtime::{Runtime};
+use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
-use tonic::{transport::Server, Request, Response, Status};
+use tonic::{Request, Response, Status, transport::Server};
+
+use bls::min_pk::{PublicKey, SecretKey};
 use bls::min_pk::proof_of_possession::*;
+use bounce_core::{ResetId, SlotId};
+use bounce_core::config::Config;
+use bounce_core::types::{CommitRecord, MultiSigned, SenderType, SendingStationMessage, Start, State};
+use communication::{MultiSignedCommitRecord, Response as GrpcResponse, ss_service_server::{SsService, SsServiceServer}};
+use key_manager::keyloader;
 use slot_clock::{SlotClock, SlotMessage};
 
 pub mod communication {
@@ -60,7 +62,7 @@ impl SsService for SSLockService {
         let mut ss = self.ss.write().await;
         let start = start.into_inner();
 
-        let deserialized_sigs = start.signatures.iter().map(|sig| Signature::from_bytes(&sig).unwrap()).collect::<Vec<Signature>>();
+        let deserialized_sigs = start.signatures.iter().map(|sig| Signature::from_bytes(sig).unwrap()).collect::<Vec<Signature>>();
 
         let verified = ss.verify_mission_control_signature(&deserialized_sigs, &start.start_message);
         if !verified {
@@ -169,7 +171,7 @@ impl SS {
             return false;
         }
         let mut verified = 0;
-        for (_, sig) in signatures.iter().enumerate() {
+        for sig in signatures.iter() {
             if self.mission_control_public_keys.iter().any(|pk| sig.verify(pk, msg)) {
                 verified += 1;
             }
@@ -207,7 +209,7 @@ impl SS {
     pub fn handle_multi_signed_commit_record(&mut self, multi_signed_cr: MultiSigned<CommitRecord>) -> bool {
         let start = std::time::Instant::now();
         let pks_refs: Vec<&PublicKey> = self.ground_station_public_keys.iter().collect();
-        if !multi_signed_cr.verify(&pks_refs).is_ok() {
+        if multi_signed_cr.verify(&pks_refs).is_err() {
             println!("Failed to verify CommitRecord signature");
             return false;
         }

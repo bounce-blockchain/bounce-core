@@ -1,11 +1,14 @@
 use std::collections::BTreeMap;
-use serde::{Deserialize, Serialize};
+
 use anyhow::{anyhow, Result};
 use bitvec::prelude::*;
 use keccak_hash::write_keccak;
-use rs_merkle::Hasher;
-use bls::min_pk::proof_of_possession::*;
 use rkyv;
+use rs_merkle::Hasher;
+use serde::{Deserialize, Serialize};
+
+use bls::min_pk::proof_of_possession::*;
+
 use crate::{ResetId, SlotId};
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
