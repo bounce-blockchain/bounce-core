@@ -201,13 +201,13 @@ impl GS {
             let signature = Signature::from_bytes(&response.value).unwrap();
             signatures.push(signature);
         }
+
+        let signatures = signatures.iter().collect::<Vec<&Signature>>();
+        let multi_signed_commit_record = MultiSigned::new(commit_record, bitvec![1; self.config.gs.len()], &signatures);
         let elapsed = start.elapsed();
         println!("GSs gathered the signatures for commit record in {:?}", elapsed);
 
-        let signatures = signatures.iter().collect::<Vec<&Signature>>();
-
-        let multi_signed_commit_record = MultiSigned::new(commit_record, bitvec![1; self.config.gs.len()], &signatures);
-        println!("GSs multi signed the commit record. Sending to Sending Stations.");
+        println!("Sending Multi-Signed CR to Sending Stations.");
         let start = std::time::Instant::now();
         for ss in &self.config.ss {
             let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss.ip)).await.unwrap();

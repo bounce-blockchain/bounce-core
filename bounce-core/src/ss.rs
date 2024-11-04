@@ -205,6 +205,7 @@ impl SS {
     }
 
     pub fn handle_multi_signed_commit_record(&mut self, multi_signed_cr: MultiSigned<CommitRecord>) -> bool {
+        let start = std::time::Instant::now();
         let pks_refs: Vec<&PublicKey> = self.ground_station_public_keys.iter().collect();
         if !multi_signed_cr.verify(&pks_refs).is_ok() {
             println!("Failed to verify CommitRecord signature");
@@ -235,6 +236,8 @@ impl SS {
 
         self.prev_cr = Some(multi_signed_cr);
         println!("Received a Multi-Signed CommitRecord with reset_id {}, slot_id {}, prev {:?}, commit_flag {}, used_as_reset {}", cr.reset_id, cr.slot_id, cr.prev, cr.commit_flag, cr.used_as_reset);
+        let elapsed = start.elapsed();
+        println!("SS processed a Multi-Signed CommitRecord in {:?}", elapsed);
 
         true
     }
@@ -244,6 +247,7 @@ impl SS {
             println!("SS does not have a previous commit record to prepare a message");
             return;
         }
+        let start = std::time::Instant::now();
         let mut multi_signed_roots = Vec::new();
         loop {
             let multi_signed_root = self.receiver_from_mkt_handler.try_recv();
@@ -262,6 +266,8 @@ impl SS {
 
         let serialized_ss_msg = bincode::serialize(&sending_station_message).unwrap();
         let signature = self.secret_key.sign(&serialized_ss_msg);
+        let elapsed = start.elapsed();
+        println!("SS prepared a message for slot {} in {:?}", next_slot, elapsed);
 
         let sat_ip = self.config.sat[0].ip.clone();
         let sat = communication::sat_service_client::SatServiceClient::connect(format!("http://{}:37131", sat_ip)).await;

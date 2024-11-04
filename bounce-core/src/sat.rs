@@ -204,6 +204,7 @@ impl Sat {
     }
 
     pub fn handle_sending_station_message(&mut self, mut message: SendingStationMessage, signature: Signature) {
+        let start = std::time::Instant::now();
         if !self.verify_sending_station_message(&message) {
             println!("Failed to verify the SendingStationMessage");
             return;
@@ -227,6 +228,8 @@ impl Sat {
             self.sending_station_messages.push((message, signature));
         }
         println!("Saved a SendingStationMessage");
+        let elapsed = start.elapsed();
+        println!("Elapsed time to verify and save the SendingStationMessage: {:?}", elapsed);
     }
 
     fn verify_sending_station_message(&self, message: &SendingStationMessage) -> bool {
@@ -271,6 +274,7 @@ impl Sat {
     pub async fn handle_slot_tick(&mut self) {
         self.slot_id += 1;
         println!("Slot tick. Sat is at slot {}", self.slot_id);
+        let start = std::time::Instant::now();
         let mut cr = CommitRecord {
             reset_id: self.reset_id,
             slot_id: self.slot_id,
@@ -307,15 +311,16 @@ impl Sat {
             cr.txroots = txroots;
         }
 
-        let gs_ip = self.config.gs[0].ip.clone();
-
         let signature = self.secret_key.sign(&bincode::serialize(&cr).unwrap());
         let signed_cr = SignedCommitRecord {
             commit_record: cr,
             signature,
         };
+        let elapsed = start.elapsed();
+        println!("Elapsed time to create and sign the commit record: {:?}", elapsed);
 
         println!("Sending commit record to GS");
+        let gs_ip = self.config.gs[0].ip.clone();
         let serialized_cr = bincode::serialize(&signed_cr).unwrap();
         let client = communication::gs_service_client::GsServiceClient::connect(format!("http://{}:37129", gs_ip)).await;
         if client.is_err() {
