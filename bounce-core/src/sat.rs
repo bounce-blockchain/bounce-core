@@ -343,7 +343,7 @@ impl Sat {
 pub async fn run_sat(config_file: &str, index: usize) -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::load_from_file(config_file);
     let sat_ip = &config.sat[index].ip;
-    let addr = format!("{}:37131", sat_ip).parse()?;
+    let addr = "0.0.0.0:37131".to_string().parse()?;
 
     let secret_key = keyloader::read_private_key(format!("sat{:02}", index).as_str());
     let mission_control_public_keys = keyloader::read_mc_public_keys(config.mc.num_keys);
