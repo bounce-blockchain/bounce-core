@@ -63,6 +63,8 @@ impl GsMerkleTreeHandler {
         let shared_buffer = Arc::new(buffer);
 
         let gs_peers = self.gs_map.get(&self.my_ip);
+        println!("GS ip: {}", self.my_ip);
+        println!("GS peers: {:?}", gs_peers);
         let mut gossip_join_set = JoinSet::new();
         if gs_peers.is_some()&&!gs_peers.unwrap().is_empty() {
             println!("Gossiping to other GSs: {:?}", self.gs_map.get(&self.my_ip));
