@@ -57,6 +57,8 @@ impl SsService for SSLockService {
 
         let (clock_send, clock_recv) = tokio::sync::mpsc::unbounded_channel();
         let (slot_send, mut slot_receive) = tokio::sync::broadcast::channel(9);
+        let (mkt_clock_send, mkt_clock_recv) = tokio::sync::mpsc::unbounded_channel();
+        let (mkt_slot_send, mkt_slot_receive) = tokio::sync::broadcast::channel(9);
         let (sender_to_ss, receiver_from_mkt_handler) = tokio::sync::mpsc::unbounded_channel();
 
         let mut ss = self.ss.write().await;
@@ -106,12 +108,15 @@ impl SsService for SSLockService {
         let ss_mk_tree_handler = bounce_core::ss_mktree_handler::SsMerkleTreeHandler::new(ss.config.clone(), ss.my_ip.clone(), ss.secret_key.clone(), ss.ground_station_public_keys.clone(), ss.f, sender_to_ss);
         let ss_mk_tree_handler_lock = Arc::new(RwLock::new(ss_mk_tree_handler));
         bounce_core::ss_mktree_handler::run_grpc_server(ss_mk_tree_handler_lock.clone(), "0.0.0.0:37140".parse().unwrap());
-        bounce_core::ss_mktree_handler::run_slot_listener(ss_mk_tree_handler_lock, slot_send.subscribe());
+        bounce_core::ss_mktree_handler::run_slot_listener(ss_mk_tree_handler_lock, mkt_slot_receive);
 
-        let mut slot_timer = SlotClock::new(5000, 500, 4000, slot_send, clock_recv);
+        let mut slot_timer = SlotClock::new(3000, 500, 2000, slot_send, clock_recv);
+        let mut mkt_slot_timer = SlotClock::new(1000, 0, 1000, mkt_slot_send, mkt_clock_recv); //last timing offset is not used
         tokio::spawn(async move { if (slot_timer.start().await).is_err() {} });
+        tokio::spawn(async move { if (mkt_slot_timer.start().await).is_err() {} });
 
         ss.clock_send.send(t).unwrap();
+        mkt_clock_send.send(t).unwrap();
 
         let reply = communication::Response {
             message: "SS processed the start message".to_string(),
@@ -269,7 +274,7 @@ impl SS {
         let serialized_ss_msg = bincode::serialize(&sending_station_message).unwrap();
         let signature = self.secret_key.sign(&serialized_ss_msg);
         let elapsed = start.elapsed();
-        println!("SS prepared a message for slot {} in {:?}", next_slot, elapsed);
+        println!("SS prepared a message with {} roots for slot {} in {:?}", sending_station_message.txroot.len(), next_slot, elapsed);
 
         let sat_ip = self.config.sat[0].ip.clone();
         let sat = communication::sat_service_client::SatServiceClient::connect(format!("http://{}:37131", sat_ip)).await;

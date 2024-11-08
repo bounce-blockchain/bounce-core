@@ -93,7 +93,7 @@ impl SatService for SatLockService {
             }
         });
 
-        let mut slot_timer = SlotClock::new(5000, 500, 4000, slot_send, clock_recv);
+        let mut slot_timer = SlotClock::new(3000, 500, 2000, slot_send, clock_recv);
         tokio::spawn(async move { if (slot_timer.start().await).is_err() {} });
 
         sat.clock_send.send(t).unwrap();
@@ -209,6 +209,7 @@ impl Sat {
             return;
         }
         println!("Verified the SendingStationMessage");
+        let mkt_start = std::time::Instant::now();
         let mut verified_roots = Vec::new();
         let gs_pk_refs: Vec<&PublicKey> = self.ground_station_public_keys.iter().collect();
         for root in &message.txroot {
@@ -219,6 +220,8 @@ impl Sat {
                 println!("# signers: {}", root.signers_bitvec.count_ones());
             }
         }
+        let elapsed_mkt = mkt_start.elapsed();
+        println!("Elapsed time to verify {} txroots: {:?}", &message.txroot.len(), elapsed_mkt);
         message.txroot = verified_roots;
         if message.txroot.is_empty() {
             println!("No valid txroots found in the SendingStationMessage. Treating it as a dummy message");
@@ -226,6 +229,7 @@ impl Sat {
         } else {
             self.sending_station_messages.push((message, signature));
         }
+
         println!("Saved a SendingStationMessage");
         let elapsed = start.elapsed();
         println!("Elapsed time to verify and save the SendingStationMessage: {:?}", elapsed);

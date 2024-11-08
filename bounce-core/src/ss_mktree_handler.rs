@@ -72,7 +72,7 @@ pub fn run_slot_listener(ss_merkle_tree_handler: Arc<RwLock<SsMerkleTreeHandler>
             match slog_msg {
                 Ok(msg) => {
                     if msg == SlotMessage::SlotThreshold1 {
-                        println!("SS merkle tree handler reach SlotThreshold1, sending the sign_merkle_tree_request");
+                        println!("SS merkle tree handler reach timer threshold, sending the sign_merkle_tree_request");
                         // Send the sign_merkle_tree_request
                         let mut ss_mk_tree_handler = ss_merkle_tree_handler.write().await;
                         ss_mk_tree_handler.send_sign_merkle_tree_request().await.unwrap();
