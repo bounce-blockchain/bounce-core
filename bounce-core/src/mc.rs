@@ -72,7 +72,7 @@ impl MC {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis()
-            + 10000) as u64;
+            + 3000) as u64;
 
         let genesis_record = CommitRecord {
             reset_id: 0,
@@ -96,7 +96,7 @@ impl MC {
             sending_station_public_keys: self.sending_public_keys.clone(),
             satellite_public_keys: self.satellite_public_keys.clone(),
             t,
-            f: 5,
+            f: 0,
             genesis_record: multi_signed_genesis_record,
         };
         let serialized_start = bincode::serialize(&start).unwrap();

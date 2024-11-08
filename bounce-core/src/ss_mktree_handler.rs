@@ -114,7 +114,7 @@ impl SsMerkleTreeHandler {
         println!("Mktree_handler Generating 1_000_000 random transactions...");
         let start = std::time::Instant::now();
         let mut txs = Vec::new();
-        for i in 0..1_000_000 {
+        for i in 0..100_000 {
             let mut rng = rand::thread_rng();
             let mut data = [0u8; 256];
             rng.fill(&mut data);
@@ -157,8 +157,12 @@ impl SsMerkleTreeHandler {
     }
 
     pub async fn send_sign_merkle_tree_request(&mut self) -> std::io::Result<Duration> {
+        // let sign_merkle_tree_request = SignMerkleTreeRequest {
+        //     txs: std::mem::take(&mut self.transactions),
+        //     sender_ip: self.my_ip.clone(),
+        // };
         let sign_merkle_tree_request = SignMerkleTreeRequest {
-            txs: std::mem::take(&mut self.transactions),
+            txs: self.transactions.clone(),
             sender_ip: self.my_ip.clone(),
         };
         let first_start = std::time::Instant::now();
@@ -231,10 +235,10 @@ impl SsMerkleTreeHandler {
             return;
         }
         println!("Received sign_merkle_tree_response with root: {:?}", root);
-        if self.processed_roots.contains(&root) {
-            println!("Already process this root.");
-            return;
-        }
+        // if self.processed_roots.contains(&root) {
+        //     println!("Already process this root.");
+        //     return;
+        // }
         self.root_to_sigs.entry(root).or_default().push(signature);
         let sigs = self.root_to_sigs.get(&root).unwrap();
         if sigs.len() as u32 >= self.f + 1 {
@@ -264,7 +268,7 @@ impl SsMerkleTreeHandler {
                         .verify(&self.ground_station_public_keys.iter().collect::<Vec<_>>())
                 );
                 println!("Received enough signatures for the root. Queueing to send to the Satellite");
-                self.processed_roots.push(root);
+                //self.processed_roots.push(root);
                 // Send the multi-signed root to the SS
                 self.sender_to_ss.send(multi_signed).unwrap();
                 println!("Aggregated signatures {:?}\n", start.elapsed());
