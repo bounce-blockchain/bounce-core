@@ -114,7 +114,7 @@ impl SsMerkleTreeHandler {
         println!("Mktree_handler Generating 1_000_000 random transactions...");
         let start = std::time::Instant::now();
         let mut txs = Vec::new();
-        for i in 0..100_000 {
+        for i in 0..10_000 {
             let mut rng = rand::thread_rng();
             let mut data = [0u8; 256];
             rng.fill(&mut data);
