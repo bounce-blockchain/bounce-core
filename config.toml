@@ -2,7 +2,7 @@
 ip = "127.0.0.1"
 num_keys = 2
 num_ss = 1
-num_gs = 20
+num_gs = 19
 num_sat = 1
 
 #[[sat]]
