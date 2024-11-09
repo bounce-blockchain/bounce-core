@@ -234,7 +234,7 @@ impl SsMerkleTreeHandler {
             eprintln!("Failed to verify the signature of the sign_merkle_tree_response");
             return;
         }
-        println!("Received sign_merkle_tree_response with root: {:?}", root);
+        println!("Received sign_merkle_tree_response");
         // if self.processed_roots.contains(&root) {
         //     println!("Already process this root.");
         //     return;
