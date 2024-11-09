@@ -93,7 +93,7 @@ impl SatService for SatLockService {
             }
         });
 
-        let mut slot_timer = SlotClock::new(3000, 500, 2000, slot_send, clock_recv);
+        let mut slot_timer = SlotClock::new(5000, 500, 4000, slot_send, clock_recv);
         tokio::spawn(async move { if (slot_timer.start().await).is_err() {} });
 
         sat.clock_send.send(t).unwrap();
