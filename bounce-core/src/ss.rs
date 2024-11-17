@@ -111,7 +111,7 @@ impl SsService for SSLockService {
         bounce_core::ss_mktree_handler::run_slot_listener(ss_mk_tree_handler_lock, mkt_slot_receive);
 
         let mut slot_timer = SlotClock::new(3000, 500, 2000, slot_send, clock_recv);
-        let mut mkt_slot_timer = SlotClock::new(3000, 0, 1000, mkt_slot_send, mkt_clock_recv); //last timing offset is not used
+        let mut mkt_slot_timer = SlotClock::new(3000, 0, 3000, mkt_slot_send, mkt_clock_recv); //last timing offset is not used
         tokio::spawn(async move { if (slot_timer.start().await).is_err() {} });
         tokio::spawn(async move { if (mkt_slot_timer.start().await).is_err() {} });
 

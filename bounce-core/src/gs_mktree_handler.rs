@@ -56,18 +56,18 @@ impl GsMerkleTreeHandler {
             buffer.extend_from_slice(&chunk[..bytes_read]);
         }
         let elapsed_time = start.elapsed();
-        println!("Received {} bytes in {:.2?}", buffer.len(), elapsed_time);
+        //println!("Received {} bytes in {:.2?}", buffer.len(), elapsed_time);
 
-        output_current_time(&format!("Received {} bytes from a client", buffer.len()));
+        //output_current_time(&format!("Received {} bytes from a client", buffer.len()));
 
         let shared_buffer = Arc::new(buffer);
 
         let gs_peers = self.gs_map.get(&self.my_ip);
-        println!("GS ip: {}", self.my_ip);
-        println!("GS peers: {:?}", gs_peers);
+        //println!("GS ip: {}", self.my_ip);
+        //println!("GS peers: {:?}", gs_peers);
         let mut gossip_join_set = JoinSet::new();
         if gs_peers.is_some()&&!gs_peers.unwrap().is_empty() {
-            println!("Gossiping to other GSs: {:?}", self.gs_map.get(&self.my_ip));
+            //println!("Gossiping to other GSs: {:?}", self.gs_map.get(&self.my_ip));
             let start = std::time::Instant::now();
             for gs_ip in self.gs_map.get(&self.my_ip).unwrap() {
                 let sharable_data = shared_buffer.clone();
@@ -77,7 +77,7 @@ impl GsMerkleTreeHandler {
                         let mut socket = TcpStream::connect(format!("{}:3100", gs_ip)).await.unwrap();
                         match socket.write_all(&sharable_data).await {
                             Ok(_) => {
-                                println!("Sent {} bytes to {}", sharable_data.len(), gs_ip);
+                                //println!("Sent {} bytes to {}", sharable_data.len(), gs_ip);
                             }
                             Err(e) => {
                                 eprintln!("Failed to write to socket: {:?}", e);
@@ -88,7 +88,7 @@ impl GsMerkleTreeHandler {
                 });
             }
             let elapsed_time = start.elapsed();
-            println!("Spawned threads to gossip to other GSs in {:.2?}", elapsed_time);
+            //println!("Spawned threads to gossip to other GSs in {:.2?}", elapsed_time);
         }
 
         // let start = std::time::Instant::now();
@@ -100,7 +100,7 @@ impl GsMerkleTreeHandler {
         let archived = unsafe { rkyv::access_unchecked::<ArchivedSignMerkleTreeRequest>(&shared_buffer) };
         //let sign_merkle_tree_request = rkyv::deserialize::<ArchivedSignMerkleTreeRequest, rancor::Error>(archived).unwrap();
         let elapsed_time = start.elapsed();
-        println!("Deserialized {} bytes in {:.2?}", shared_buffer.len(), elapsed_time);
+        //println!("Deserialized {} bytes in {:.2?}", shared_buffer.len(), elapsed_time);
         println!("Received sign_merkle_tree_request with {} txs from {}", archived.txs.len(), archived.sender_ip);
 
         output_current_time("Received sign_merkle_tree_request");
@@ -117,14 +117,14 @@ impl GsMerkleTreeHandler {
             .map(|tx| keccak(&tx.0).into())
             .collect::<Vec<[u8; 32]>>();
         let duration = start.elapsed();
-        println!("Hashing of txs: {:?}", duration);
+        //println!("Hashing of txs: {:?}", duration);
 
         let start = std::time::Instant::now();
         let mt = MerkleTree::<Keccak256>::from_leaves(&hashes);
         let duration = start.elapsed();
-        println!("Build MerkleTree: {:?}", duration);
+        //println!("Build MerkleTree: {:?}", duration);
         if mt.root().is_none() {
-            println!("MerkleTree root is None. Not processing.");
+            //println!("MerkleTree root is None. Not processing.");
             return Ok(());
         }
 
@@ -140,7 +140,7 @@ impl GsMerkleTreeHandler {
         let start = std::time::Instant::now();
         gossip_join_set.join_all().await;
         let duration = start.elapsed();
-        println!("Awaiting Gossiping to other GSs: {:?}", duration);
+        //println!("Awaiting Gossiping to other GSs: {:?}", duration);
 
         Ok(())
     }
