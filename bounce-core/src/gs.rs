@@ -77,20 +77,24 @@ impl GsService for GSLockService {
         request: Request<communication::SignedCommitRecord>,
     ) -> Result<Response<GrpcResponse>, Status> {
         let request = request.into_inner();
-        let gs = self.gs.read().await;
+        let gs = self.gs.clone();
 
         let deserialize = bincode::deserialize(&request.signed_commit_record);
         if deserialize.is_err() {
             return Err(Status::invalid_argument("Failed to deserialize the signed commit record"));
         }
         let signed_commit_record: SignedCommitRecord = deserialize.unwrap();
-        let start = std::time::Instant::now();
-        gs.handle_commit_record(signed_commit_record).await;
-        let elapsed = start.elapsed();
-        println!("GS processed the commit record in {:?}", elapsed);
+
+        tokio::task::spawn(async move {
+            let gs = gs.read().await;
+            let start = std::time::Instant::now();
+            gs.handle_commit_record(signed_commit_record).await;
+            let elapsed = start.elapsed();
+            println!("GS processed the commit record in {:?}", elapsed);
+        });
 
         let reply = GrpcResponse {
-            message: "GS processed the commit record".to_string(),
+            message: "GS received CR".to_string(),
         };
 
         Ok(Response::new(reply))
