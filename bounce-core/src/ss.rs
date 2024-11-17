@@ -126,12 +126,14 @@ impl SsService for SSLockService {
     }
 
     async fn handle_multi_signed_commit_record(&self, request: Request<MultiSignedCommitRecord>) -> Result<Response<GrpcResponse>, Status> {
+        println!("SS received a MultiSignedCommitRecord");
         let request = request.into_inner();
         let mut ss = self.ss.write().await;
         let deserialized_multi_signed_cr = bincode::deserialize(&request.multi_signed_commit_record);
         if deserialized_multi_signed_cr.is_err() {
             return Err(Status::invalid_argument("Failed to deserialize MultiSignedCommitRecord"));
         }
+        println!("SS verifying MultiSignedCommitRecord");
         let verified = ss.handle_multi_signed_commit_record(deserialized_multi_signed_cr.unwrap());
         Ok(Response::new(GrpcResponse {
             message: format!("SS processed the MultiSignedCommitRecord: {}", verified),
