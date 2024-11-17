@@ -28,7 +28,7 @@ pub fn read_mc_public_keys(num_mc_keys:u32) -> Vec<PublicKey> {
     let mut public_keys = Vec::new();
 
     // Read MC public keys based on the number defined in the config
-    for mc_id in 1..=num_mc_keys {
+    for mc_id in 0..num_mc_keys {
         let public_key_path = format!("keys/min_pk/mc{:02}.public.key", mc_id);
         if Path::new(&public_key_path).exists() {
             let public_key = load_bls_public_key(&public_key_path);

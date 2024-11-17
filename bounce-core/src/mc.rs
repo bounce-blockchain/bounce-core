@@ -1,16 +1,19 @@
-use std::collections::{BTreeMap};
-use tonic::{transport::Server, Request, Response, Status};
-use communication::{mc_service_server::{McService, McServiceServer}, Start, Message, Response as GrpcResponse};
-use crate::config::Config;
+use std::collections::BTreeMap;
+use std::env;
+
+use bitvec::bitvec;
 use rand::seq::SliceRandom;
 use tokio::runtime::Runtime;
-use std::env;
-use keccak_hash::{keccak};
-use crate::communication::CommitRecord;
-use bls::min_pk::{PublicKey, SecretKey};
+use tonic::{Request, Response, Status, transport::Server};
+
+use bls::min_pk::{PublicKey, SecretKey, Signature};
+use bls::min_pk::proof_of_possession::SecretKeyPop;
 use bounce_core::{ResetId, SlotId};
-use bounce_core::types::State;
+use bounce_core::types::{CommitRecord, MultiSigned, Start, State};
+use communication::{mc_service_server::{McService, McServiceServer}, Message, Response as GrpcResponse};
 use key_manager::keyloader;
+
+use crate::config::Config;
 
 pub mod config;
 
@@ -45,7 +48,6 @@ impl MC {
         ground_station_public_keys: Vec<PublicKey>,
         satellite_public_keys: Vec<PublicKey>,
     ) -> Self {
-
         MC {
             secret_keys,
             state: State::Inactive,
@@ -65,63 +67,70 @@ impl MC {
             satellite_slot_assignments: BTreeMap::new(),
         }
     }
-    pub async fn send_start_message(&self, config: &Config, sending_station_slot_assignments:BTreeMap<SlotId,Vec<PublicKey>>, satellite_slot_assignments:BTreeMap<SlotId,PublicKey>) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn send_start_message(&self, config: &Config, sending_station_slot_assignments: BTreeMap<SlotId, Vec<PublicKey>>, satellite_slot_assignments: BTreeMap<SlotId, PublicKey>) -> Result<(), Box<dyn std::error::Error>> {
         let t = (std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis()
             + 10000) as u64;
 
-        let hash = keccak("genesis-record".as_bytes()).to_fixed_bytes();
-
-        let genesis_record = CommitRecord{
+        let genesis_record = CommitRecord {
             reset_id: 0,
             slot_id: 0,
-            txroot: Vec::from(hash),
-            prev: vec![],
+            txroots: vec![],
+            prev: [0u8; 32],
             commit_flag: true,
             used_as_reset: false,
         };
-
-        let sending_station_slot_assignments_for_start = sending_station_slot_assignments.iter().map(|(slot_id, pks)| {
-            let public_keys = pks.iter().map(|pk| communication::PublicKey { value: Vec::from(pk.to_bytes()) }).collect();
-            (*slot_id, communication::PublicKeyList { public_keys })
+        let serialized_genesis_record = bincode::serialize(&genesis_record).unwrap();
+        let signatures: Vec<Signature> = self.secret_keys.iter().map(|sk| {
+            sk.sign(&serialized_genesis_record)
         }).collect();
-        let satellite_slot_assignments_for_start = satellite_slot_assignments.iter().map(|(slot_id, pk)| {
-            (*slot_id, communication::PublicKey { value: Vec::from(pk.to_bytes()) })
-        }).collect();
+        let sig_refs: Vec<&Signature> = signatures.iter().collect();
+        let multi_signed_genesis_record = MultiSigned::new(genesis_record, bitvec!(1; self.secret_keys.len()), &sig_refs);
 
         let start = Start {
-            satellite_slot_assignments:satellite_slot_assignments_for_start,
-            sending_station_slot_assignments: sending_station_slot_assignments_for_start,
-            ground_station_public_keys: vec![],
-            sending_station_public_keys: vec![],
-            satellite_public_keys: vec![],
+            satellite_slot_assignments,
+            sending_station_slot_assignments,
+            ground_station_public_keys: self.ground_station_public_keys.clone(),
+            sending_station_public_keys: self.sending_public_keys.clone(),
+            satellite_public_keys: self.satellite_public_keys.clone(),
             t,
             f: 0,
-            genesis_record:Some(genesis_record),
+            genesis_record: multi_signed_genesis_record,
         };
+        let serialized_start = bincode::serialize(&start).unwrap();
+        let signatures: Vec<Vec<u8>> = self.secret_keys.iter().map(|sk| {
+            sk.sign(&serialized_start).to_bytes().to_vec()
+        }).collect();
         println!("Sending start message to all instances");
         for gs in &config.gs {
             let mut client = communication::gs_service_client::GsServiceClient::connect(format!("http://{}:37129", gs.ip)).await?;
-            let request = tonic::Request::new(start.clone());
+            let request = tonic::Request::new(communication::Start {
+                start_message: serialized_start.clone(),
+                signatures: signatures.clone(),
+            });
             let response = client.handle_start(request).await?;
             println!("Response from GS: {:?}", response.into_inner().message);
         }
         for ss in &config.ss {
             let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss.ip)).await?;
-            let request = tonic::Request::new(start.clone());
+            let request = tonic::Request::new(communication::Start {
+                start_message: serialized_start.clone(),
+                signatures: signatures.clone(),
+            });
             let response = client.handle_start(request).await?;
             println!("Response from SS: {:?}", response.into_inner().message);
         }
-        // for sat in &config.sat {
-        //     let mut client = communication::sat_service_client::SatServiceClient::connect(format!("http://{}:37131", sat.ip)).await?;
-        //     let request = tonic::Request::new(start.clone());
-        //     let response = client.handle_start(request).await?;
-        //     println!("Response from Sat: {:?}", response.into_inner().message);
-        // }
-
-        // Similarly, send the start message to GS and SAT instances.
+        for sat in &config.sat {
+            let mut client = communication::sat_service_client::SatServiceClient::connect(format!("http://{}:37131", sat.ip)).await?;
+            let request = tonic::Request::new(communication::Start {
+                start_message: serialized_start.clone(),
+                signatures: signatures.clone(),
+            });
+            let response = client.handle_start(request).await?;
+            println!("Response from Sat: {:?}", response.into_inner().message);
+        }
 
         Ok(())
     }
@@ -189,12 +198,12 @@ pub async fn run_mc(config_file: &str) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
-pub fn generate_sending_station_slot_assignments(sending_station_pks:&[PublicKey], starting_slot:u64) -> BTreeMap<SlotId, Vec<PublicKey>> {
+pub fn generate_sending_station_slot_assignments(sending_station_pks: &[PublicKey], starting_slot: u64) -> BTreeMap<SlotId, Vec<PublicKey>> {
     let mut slot_assignments = BTreeMap::new();
 
     // let's first run for 100 slots
     // All sending stations are assigned to it.
-    for slot in starting_slot..(starting_slot+100) {
+    for slot in starting_slot..(starting_slot + 100) {
         slot_assignments
             .entry(slot)
             .or_insert_with(Vec::new)
@@ -204,12 +213,12 @@ pub fn generate_sending_station_slot_assignments(sending_station_pks:&[PublicKey
     slot_assignments
 }
 
-pub fn generate_satellite_slot_assignments(satellite_pks:&[PublicKey], starting_slot:u64) -> BTreeMap<SlotId, PublicKey> {
+pub fn generate_satellite_slot_assignments(satellite_pks: &[PublicKey], starting_slot: u64) -> BTreeMap<SlotId, PublicKey> {
     let mut slot_assignments = BTreeMap::new();
 
     // let's first run for 100 slots
     // For each slot, we make sure that only one satellite is assigned to it.
-    for slot in starting_slot..(starting_slot+100) {
+    for slot in starting_slot..(starting_slot + 100) {
         let satellite = satellite_pks.choose(&mut rand::thread_rng()).unwrap();
         slot_assignments.insert(slot, *satellite);
     }

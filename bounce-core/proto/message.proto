@@ -8,14 +8,21 @@ service MCService {
 
 service GSService {
     rpc HandleStart (Start) returns (Response);
+    rpc HandleCommitRecord (SignedCommitRecord) returns (Response);
+    rpc HandleSignCommitRecordRequest (SignedCommitRecord) returns (Signature);
 }
 
 service SATService {
     rpc HandleStart (Start) returns (Response);
+    rpc HandleSendingStationMessage (SendingStationMessage) returns (Response);
 }
 
 service SSService {
     rpc HandleStart (Start) returns (Response);
+    rpc HandleMultiSignedCommitRecord (MultiSignedCommitRecord) returns (Response);
+}
+
+service SSMerkleTreeHandlerService {
     rpc HandleSignMerkleTreeResponse (SignMerkleTreeResponse) returns (Response);
 }
 
@@ -40,27 +47,25 @@ message PublicKeyList {
     repeated PublicKey public_keys = 1;
 }
 
-message CommitRecord {
-    uint64 reset_id = 1;
-    uint64 slot_id = 2;
-    bytes txroot = 3;
-    bytes prev = 4;
-    bool commit_flag = 5;
-    bool used_as_reset = 6;
+message SignedCommitRecord {
+    bytes signed_commit_record = 1;
+}
+
+message MultiSignedCommitRecord {
+    bytes multi_signed_commit_record = 1;
 }
 
 message Start {
-    map<uint64, PublicKey> satellite_slot_assignments = 1;
-    map<uint64, PublicKeyList> sending_station_slot_assignments = 2;
-    repeated PublicKey ground_station_public_keys = 3;
-    repeated PublicKey sending_station_public_keys = 4;
-    repeated PublicKey satellite_public_keys = 5;
-    uint64 t = 6;
-    uint32 f = 7;
-    CommitRecord genesis_record = 8;
+    bytes start_message = 1;
+    repeated bytes signatures = 2;
 }
 
 message SignMerkleTreeResponse {
     bytes signature = 1;
     bytes root = 2;
+}
+
+message SendingStationMessage {
+    bytes sending_station_message = 1;
+    bytes signature = 2;
 }

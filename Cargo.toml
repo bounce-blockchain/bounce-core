@@ -1,12 +1,12 @@
 [workspace]
 members = [
     "bounce-core",
-    "bls", "key-manager", "local-timming-tests",
+    "bls", "key-manager", "local-timming-tests", "slot-clock", "distributed-timming-tests",
 ]
 resolver = "2"
 
 [workspace.dependencies]
-anyhow = "1.0.75"
+anyhow = "1.0.91"
 bincode = "1.3.3"
 blst = "0.3.11"
 clap = { version = "4.5.19", features = ["derive"] }
@@ -21,6 +21,7 @@ rayon = "1.10.0"
 rkyv = "0.8.8"
 rs_merkle = "1.4.2"
 serde = { version = "1.0.210", features = ["derive"] }
+tokio = { version = "1.40.0", features = ["full"] }
 
 # dev-dependencies
 criterion = "0.5.1"

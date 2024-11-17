@@ -1,24 +1,20 @@
 use std::collections::{HashMap, HashSet};
-use tonic::{transport::Server, Request, Response, Status};
-use communication::{gs_service_server::{GsService, GsServiceServer}, Start, Response as GrpcResponse, SignMerkleTreeResponse};
-use bounce_core::types::{ArchivedSignMerkleTreeRequest, Keccak256};
-use bounce_core::common::*;
-use bounce_core::config::Config;
-use rayon::prelude::*;
-use tokio::runtime::Runtime;
 use std::env;
-//use std::io::Cursor;
-use std::net::{SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Instant;
-use keccak_hash::keccak;
-use rs_merkle::MerkleTree;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
+
+use bitvec::bitvec;
+use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
-use tokio::task;
-use tokio::task::JoinSet;
-use bls::min_pk::{PublicKey, SecretKey};
+use tonic::{Request, Response, Status, transport::Server};
+
+use bls::min_pk::{PublicKey, SecretKey, Signature};
+use bls::min_pk::proof_of_possession::*;
+use bounce_core::config::Config;
+use bounce_core::gs_mktree_handler;
+use bounce_core::gs_mktree_handler::GsMerkleTreeHandler;
+use bounce_core::types::{MultiSigned, SenderType, SignedCommitRecord, Start};
+use communication::{gs_service_server::{GsService, GsServiceServer}, Response as GrpcResponse};
 use key_manager::keyloader;
 
 pub mod communication {
@@ -27,6 +23,7 @@ pub mod communication {
 
 pub struct GS {
     config: Config,
+    my_ip: String,
 
     secret_key: SecretKey,
 
@@ -47,12 +44,26 @@ pub struct GSLockService {
 impl GsService for GSLockService {
     async fn handle_start(
         &self,
-        start: Request<Start>,
+        start: Request<communication::Start>,
     ) -> Result<Response<GrpcResponse>, Status> {
-        println!("GS received a Start message from MC with t: {}", start.get_ref().t);
+        println!("GS received a Start message from MC");
         let mut gs = self.gs.write().await;
 
-        gs.start(start.into_inner());
+        let start = start.into_inner();
+        let deserialized_sigs = start.signatures.iter().map(|sig| Signature::from_bytes(sig).unwrap()).collect::<Vec<Signature>>();
+
+        let verified = gs.verify_mission_control_signature(&deserialized_sigs, &start.start_message);
+        if !verified {
+            return Err(Status::unauthenticated(format!("Failed to verify Mission Control signatures on Sending Station: {}", gs.my_ip)));
+        }
+
+        let deserialized_start_msg = bincode::deserialize(&start.start_message);
+        if deserialized_start_msg.is_err() {
+            return Err(Status::invalid_argument("Failed to serialize start message"));
+        }
+        let deserialized_start_msg: Start = deserialized_start_msg.unwrap();
+
+        gs.start(deserialized_start_msg);
 
         let reply = GrpcResponse {
             message: "GS processed the start message".to_string(),
@@ -60,12 +71,59 @@ impl GsService for GSLockService {
 
         Ok(Response::new(reply))
     }
+
+    async fn handle_commit_record(
+        &self,
+        request: Request<communication::SignedCommitRecord>,
+    ) -> Result<Response<GrpcResponse>, Status> {
+        let request = request.into_inner();
+        let gs = self.gs.read().await;
+
+        let deserialize = bincode::deserialize(&request.signed_commit_record);
+        if deserialize.is_err() {
+            return Err(Status::invalid_argument("Failed to deserialize the signed commit record"));
+        }
+        let signed_commit_record: SignedCommitRecord = deserialize.unwrap();
+        let start = std::time::Instant::now();
+        gs.handle_commit_record(signed_commit_record).await;
+        let elapsed = start.elapsed();
+        println!("GS processed the commit record in {:?}", elapsed);
+
+        let reply = GrpcResponse {
+            message: "GS processed the commit record".to_string(),
+        };
+
+        Ok(Response::new(reply))
+    }
+
+    async fn handle_sign_commit_record_request(&self, request: Request<communication::SignedCommitRecord>) -> Result<Response<communication::Signature>, Status> {
+        let request = request.into_inner();
+        let gs = self.gs.read().await;
+
+        let deserialize = bincode::deserialize(&request.signed_commit_record);
+        if deserialize.is_err() {
+            return Err(Status::invalid_argument("Failed to deserialize the signed commit record"));
+        }
+        let signed_commit_record: SignedCommitRecord = deserialize.unwrap();
+        let commit_record = signed_commit_record.commit_record;
+        let commit_record_signature = signed_commit_record.signature;
+        if !gs.verify_signature(&commit_record_signature, &bincode::serialize(&commit_record).unwrap(), SenderType::Satellite) {
+            return Err(Status::unauthenticated("Failed to verify the signature of the commit record"));
+        }
+
+        let signature = gs.secret_key.sign(&bincode::serialize(&commit_record).unwrap());
+
+        Ok(Response::new(communication::Signature {
+            value: signature.to_bytes().to_vec(),
+        }))
+    }
 }
 
 impl GS {
-    pub fn new(config: Config, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>) -> Self {
+    pub fn new(config: Config, my_ip: String, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>) -> Self {
         GS {
             config,
+            my_ip,
             secret_key,
             ground_station_public_keys: Vec::new(),
             sending_station_public_keys: Vec::new(),
@@ -76,141 +134,93 @@ impl GS {
         }
     }
 
+    pub fn verify_signature(&self, signature: &Signature, msg: &[u8], sender: SenderType) -> bool {
+        match sender {
+            SenderType::GroundStation => {
+                self.ground_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            SenderType::SendingStation => {
+                self.sending_station_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            SenderType::Satellite => {
+                self.satellite_public_keys.iter().any(|pk| signature.verify(pk, msg))
+            }
+            _ => false,
+        }
+    }
+
+    pub fn verify_mission_control_signature(&self, signatures: &[Signature], msg: &[u8]) -> bool {
+        if self.mission_control_public_keys.is_empty() || signatures.len() as f32 / (self.mission_control_public_keys.len() as f32) < self.mc_limit {
+            return false;
+        }
+        let mut verified = 0;
+        for sig in signatures.iter() {
+            if self.mission_control_public_keys.iter().any(|pk| sig.verify(pk, msg)) {
+                verified += 1;
+            }
+        }
+        log::debug!(
+            "Verified {} out of {} received Mission Control signatures, using {} public keys",
+            verified,
+            signatures.len(),
+            self.mission_control_public_keys.len()
+        );
+        (verified as f32) / (self.mission_control_public_keys.len() as f32) >= self.mc_limit
+    }
+
     pub fn start(&mut self, start: Start) {
         log::info!(
             "Received start message with {} number of ground stations",
             start.ground_station_public_keys.len()
         );
-        self.ground_station_public_keys = start.ground_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
-        self.sending_station_public_keys = start.sending_station_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
-        self.satellite_public_keys = start.satellite_public_keys.iter().map(|pk| PublicKey::from_bytes(&pk.value).unwrap()).collect();
+        self.ground_station_public_keys = start.ground_station_public_keys;
+        self.sending_station_public_keys = start.sending_station_public_keys;
+        self.satellite_public_keys = start.satellite_public_keys;
         self.f = start.f;
 
         println!("GS started with f: {}", self.f);
     }
-}
 
-pub async fn handle_connection(mut socket: TcpStream, ss_ips: Vec<String>, gs_map: HashMap<String, HashSet<String>>, my_ip: String) -> Result<(), Box<dyn std::error::Error>> {
-    // Buffer for incoming data
-    let mut buffer = Vec::new();
-    let mut chunk = vec![0u8; 2 * 1024 * 1024]; // Read in 2 MB chunks
+    pub async fn handle_commit_record(&self, signed_commit_record: SignedCommitRecord) {
+        let serialized_signed_commit_record = bincode::serialize(&signed_commit_record).unwrap();
+        let commit_record = signed_commit_record.commit_record;
+        println!("GS received a commit record from SAT");
+        println!("Send to other GSs");
+        let serialized_commit_record = bincode::serialize(&commit_record).unwrap();
 
-    let start = std::time::Instant::now();
-    loop {
-        // Read data into the chunk
-        let bytes_read = match socket.read(&mut chunk).await {
-            Ok(0) => {
-                // Connection closed by the client
-                break;
-            }
-            Ok(n) => n,
-            Err(e) => {
-                eprintln!("Failed to read from socket: {:?}", e);
-                return Err(Box::new(e));
-            }
-        };
-
-        // Append the read data to the buffer
-        buffer.extend_from_slice(&chunk[..bytes_read]);
-    }
-    let elapsed_time = start.elapsed();
-    println!("Received {} bytes in {:.2?}", buffer.len(), elapsed_time);
-
-    output_current_time(&format!("Received {} bytes from a client", buffer.len()));
-
-    let shared_buffer = Arc::new(buffer);
-
-    let gs_peers = gs_map.get(&my_ip).unwrap();
-    let mut gossip_join_set = JoinSet::new();
-    if !gs_peers.is_empty() {
-        println!("Gossiping to other GSs: {:?}", gs_map.get(&my_ip));
         let start = std::time::Instant::now();
-        for gs_ip in gs_map.get(&my_ip).unwrap() {
-            let sharable_data = shared_buffer.clone();
-            let gs_ip = gs_ip.clone();
-            gossip_join_set.spawn({
-                async move {
-                    let mut socket = TcpStream::connect(format!("{}:3100", gs_ip)).await.unwrap();
-                    match socket.write_all(&sharable_data).await {
-                        Ok(_) => {
-                            println!("Sent {} bytes to {}", sharable_data.len(), gs_ip);
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to write to socket: {:?}", e);
-                        }
-                    }
-                    drop(socket);
-                }
+        let mut signatures = vec![self.secret_key.sign(&serialized_commit_record)];
+        for gs in &self.config.gs {
+            if gs.ip == self.my_ip {
+                continue;
+            }
+            let mut client = communication::gs_service_client::GsServiceClient::connect(format!("http://{}:37129", gs.ip)).await.unwrap();
+            let request = tonic::Request::new(communication::SignedCommitRecord {
+                signed_commit_record: serialized_signed_commit_record.clone(),
             });
+            let response = client.handle_sign_commit_record_request(request).await.unwrap();
+            let response = response.into_inner();
+            let signature = Signature::from_bytes(&response.value).unwrap();
+            signatures.push(signature);
         }
-        let elapsed_time = start.elapsed();
-        println!("Spawned threads to gossip to other GSs in {:.2?}", elapsed_time);
-    }
 
-    // let start = std::time::Instant::now();
-    // let decompressed = zstd::stream::decode_all(Cursor::new(&**shared_buffer)).unwrap();
-    // let elapsed_time = start.elapsed();
-    // println!("Decompressed {} bytes in {:.2?}", decompressed.len(), elapsed_time);
+        let signatures = signatures.iter().collect::<Vec<&Signature>>();
+        let multi_signed_commit_record = MultiSigned::new(commit_record, bitvec![1; self.config.gs.len()], &signatures);
+        let elapsed = start.elapsed();
+        println!("GSs gathered the signatures for commit record in {:?}", elapsed);
 
-    let start = std::time::Instant::now();
-    let archived = unsafe { rkyv::access_unchecked::<ArchivedSignMerkleTreeRequest>(&shared_buffer) };
-    //let sign_merkle_tree_request = rkyv::deserialize::<ArchivedSignMerkleTreeRequest, rancor::Error>(archived).unwrap();
-    let elapsed_time = start.elapsed();
-    println!("Deserialized {} bytes in {:.2?}", shared_buffer.len(), elapsed_time);
-    println!("Received sign_merkle_tree_request with {} txs", archived.txs.len());
-
-    output_current_time("Received sign_merkle_tree_request");
-
-    //process the request
-    let start = Instant::now();
-    let hashes = archived.txs
-        .par_iter()
-        .map(|tx| keccak(&tx.0).into())
-        .collect::<Vec<[u8; 32]>>();
-    let duration = start.elapsed();
-    println!("Hashing of txs: {:?}", duration);
-
-    let start = Instant::now();
-    let mt = MerkleTree::<Keccak256>::from_leaves(&hashes);
-    let duration = start.elapsed();
-    println!("Build MerkleTree: {:?}", duration);
-
-    let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss_ips[0])).await?;
-    let sign_mk_response = tonic::Request::new(SignMerkleTreeResponse {
-        signature: vec![],
-        root: mt.root().unwrap().to_vec(),
-    });
-    client.handle_sign_merkle_tree_response(sign_mk_response).await?;
-
-    let start = Instant::now();
-    gossip_join_set.join_all().await;
-    let duration = start.elapsed();
-    println!("Gossiping to other GSs: {:?}", duration);
-
-    Ok(())
-}
-
-pub async fn run_listener(addr: SocketAddr, ss_ips: Vec<String>, gs_map: HashMap<String, HashSet<String>>, my_ip: String) {
-    let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
-    println!("Server listening on {}", addr);
-
-    loop {
-        match listener.accept().await {
-            Ok((socket, _)) => {
-                println!("Accepted connection from: {}", socket.peer_addr().unwrap());
-                let ss_ips = ss_ips.clone();
-                let gs_map = gs_map.clone();
-                let my_ip = my_ip.clone();
-                task::spawn(async move {
-                    if let Err(e) = handle_connection(socket, ss_ips, gs_map, my_ip).await {
-                        eprintln!("Failed to handle connection: {:?}", e);
-                    }
-                });
-            }
-            Err(e) => {
-                eprintln!("Failed to accept connection: {:?}", e);
-            }
+        println!("Sending Multi-Signed CR to Sending Stations.");
+        let start = std::time::Instant::now();
+        for ss in &self.config.ss {
+            let mut client = communication::ss_service_client::SsServiceClient::connect(format!("http://{}:37130", ss.ip)).await.unwrap();
+            let request = tonic::Request::new(communication::MultiSignedCommitRecord {
+                multi_signed_commit_record: bincode::serialize(&multi_signed_commit_record).unwrap(),
+            });
+            let response = client.handle_multi_signed_commit_record(request).await.unwrap();
+            println!("Response from SS: {:?}", response.into_inner().message);
         }
+        let elapsed = start.elapsed();
+        println!("GSs sent the multi signed commit record to SSs in {:?}", elapsed);
     }
 }
 
@@ -221,7 +231,10 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let secret_key = keyloader::read_private_key(format!("gs{:02}", index).as_str());
     let mission_control_public_keys = keyloader::read_mc_public_keys(config.mc.num_keys);
 
-    let gs = GS::new(config.clone(), secret_key, mission_control_public_keys);
+    let gs_ips = config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
+    let my_ip = gs_ips[index].clone();
+
+    let gs = GS::new(config.clone(), my_ip.clone(), secret_key.clone(), mission_control_public_keys);
 
     println!("GS is listening on {}", addr);
 
@@ -229,33 +242,13 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let ports = vec![3100];
     let mut tasks = vec![];
 
-    // Start a ss listener on each port
-    let ss_ips = config.ss.iter().map(|ss| ss.ip.clone()).collect::<Vec<String>>();
-    let mut gs_ips = config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
-    let my_ip = gs_ips[index].clone();
-    gs_ips.insert(0, "dummy".to_string());
-    gs_ips.insert(1, "dummy".to_string());
-    let mut gs_map: HashMap<String, HashSet<String>> = HashMap::new();
-    for (i, gs) in gs_ips.iter().enumerate() {
-        if i < 2 {
-            continue;
-        }
-        let mut set = HashSet::new();
-        if i * 3 - 1 < gs_ips.len() {
-            set.insert(gs_ips[i * 3 - 1].clone());
-        }
-        if i * 3 < gs_ips.len() {
-            set.insert(gs_ips[i * 3].clone());
-        }
-        if i * 3 + 1 < gs_ips.len() {
-            set.insert(gs_ips[i * 3 + 1].clone());
-        }
-        gs_map.insert(gs.clone(), set);
-    }
+    // Start a sign-merkle-request listener on each port
+    let gs_map = build_tree(gs_ips, config.fanout.fanout);
     println!("GS map: {:?}", gs_map);
     for port in ports {
         let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
-        tasks.push(task::spawn(run_listener(addr, ss_ips.clone(), gs_map.clone(), my_ip.clone())));
+        let gs_mktree_handler = GsMerkleTreeHandler::new(secret_key.clone(), my_ip.clone(), gs_map.clone());
+        tasks.push(tokio::task::spawn(gs_mktree_handler::run_listener(gs_mktree_handler, addr)));
     }
 
     Server::builder()
@@ -266,6 +259,25 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
         .await?;
 
     Ok(())
+}
+
+fn build_tree(gs_ips: Vec<String>, fanout: usize) -> HashMap<String, HashSet<String>> {
+    let mut tree: HashMap<String, HashSet<String>> = HashMap::new();
+    let n = gs_ips.len();
+    for i in 1..=n {
+        let children_start = i * fanout + 1;
+        let children_end = (i + 1) * fanout + 1;
+
+        for child in children_start..children_end {
+            if child > n {
+                break;
+            }
+
+            tree.entry(gs_ips[i - 1].clone()).or_default().insert(gs_ips[child - 1].clone());
+        }
+    }
+
+    tree
 }
 
 fn main() {

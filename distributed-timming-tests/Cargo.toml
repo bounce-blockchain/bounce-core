@@ -1,0 +1,25 @@
+[package]
+name = "distributed-timming-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bls = { path = "../bls", features = ["proptest"] }
+bounce-core = { path = "../bounce-core" }
+keccak-hash = { workspace = true }
+rand = { workspace = true }
+rayon = { workspace = true }
+rkyv = { workspace = true }
+rs_merkle = {workspace = true}
+tonic = "0.12.3"
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
+zstd = "0.13.2"
+bincode = {workspace = true}
+
+[[bin]]
+name = "signmktrequest"
+path = "src/signmktrequest.rs"
+
+[[bin]]
+name = "dataloader"
+path = "src/dataloader.rs"

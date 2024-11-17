@@ -7,6 +7,7 @@ pub struct Config {
     pub ss: Vec<Component>,
     pub gs: Vec<Component>,
     pub sat: Vec<Component>,
+    pub fanout: Fanout,
 }
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct MCComponent {
@@ -20,6 +21,11 @@ pub struct MCComponent {
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct Component {
     pub ip: String,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct Fanout {
+    pub fanout: usize,
 }
 
 impl Config {
