@@ -165,7 +165,7 @@ impl SsMerkleTreeHandler {
         let start = std::time::Instant::now();
         let serialized_data = rkyv::to_bytes::<Error>(&sign_merkle_tree_request).unwrap();
         let elapsed = start.elapsed();
-        println!("Serialized sign_merkle_tree_request in {:?}", elapsed);
+        //println!("Serialized sign_merkle_tree_request in {:?}", elapsed);
 
         // Do compression when network is slow
         // let cursor = std::io::Cursor::new(serialized_data);
@@ -182,14 +182,14 @@ impl SsMerkleTreeHandler {
         let mut join_set = JoinSet::new();
         for gs_ip in &gs_ips[0..std::cmp::min(3, gs_ips.len())] {
             let addr: SocketAddr = format!("{}:{}", gs_ip, self.gs_tx_receiver_ports[0]).parse().unwrap();
-            println!("Spawning process to send sign_merkle_tree_request to {}", addr);
+            //println!("Spawning process to send sign_merkle_tree_request to {}", addr);
             let sharable_data = Arc::clone(&sharable_data);
             join_set.spawn(async move {
                 let start = std::time::Instant::now();
                 match TcpStream::connect(&addr).await {
                     Ok(mut stream) => {
                         let elapsed = start.elapsed();
-                        println!("Connected to {} in {:?}", addr, elapsed);
+                        //println!("Connected to {} in {:?}", addr, elapsed);
                         output_current_time("Sending sign_merkle_tree_request...");
 
                         // Send the serialized data
@@ -199,7 +199,7 @@ impl SsMerkleTreeHandler {
                             return;
                         }
                         let elapsed = start.elapsed();
-                        println!("Thread sent sign_merkle_tree_request in {:?}", elapsed);
+                        //println!("Thread sent sign_merkle_tree_request in {:?}", elapsed);
 
                         // Drop the stream to close the connection
                         drop(stream);
@@ -211,15 +211,15 @@ impl SsMerkleTreeHandler {
             });
         }
         let elapsed = start.elapsed();
-        println!("Spawned all workers in {:?}", elapsed);
+        //println!("Spawned all workers in {:?}", elapsed);
 
         let start = std::time::Instant::now();
         join_set.join_all().await;
         let elapsed = start.elapsed();
-        output_current_time(&format!("sign_merkle_tree_request sent. Time elapsed: {:?}", elapsed));
+        //output_current_time(&format!("sign_merkle_tree_request sent. Time elapsed: {:?}", elapsed));
 
         let last_elapsed = first_start.elapsed();
-        println!("Total time elapsed in method: {:?}", last_elapsed);
+        //println!("Total time elapsed in method: {:?}", last_elapsed);
 
         Ok(elapsed)
     }
@@ -230,9 +230,9 @@ impl SsMerkleTreeHandler {
             eprintln!("Failed to verify the signature of the sign_merkle_tree_response");
             return;
         }
-        println!("Received sign_merkle_tree_response with root: {:?}", root);
+        //println!("Received sign_merkle_tree_response with root: {:?}", root);
         if self.processed_roots.contains(&root) {
-            println!("Already process this root.");
+            //println!("Already process this root.");
             return;
         }
         self.root_to_sigs.entry(root).or_default().push(signature);
