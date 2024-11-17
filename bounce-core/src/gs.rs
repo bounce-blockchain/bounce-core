@@ -103,6 +103,7 @@ impl GsService for GSLockService {
     async fn handle_sign_commit_record_request(&self, request: Request<communication::SignedCommitRecord>) -> Result<Response<communication::Signature>, Status> {
         let request = request.into_inner();
         let gs = self.gs.read().await;
+        println!("GS received a sign commit record request from another GS");
 
         let deserialize = bincode::deserialize(&request.signed_commit_record);
         if deserialize.is_err() {
@@ -194,13 +195,15 @@ impl GS {
 
         let start = std::time::Instant::now();
         let mut signatures = vec![self.secret_key.sign(&serialized_commit_record)];
-        for gs in &self.config.gs {
+        let mut bitvec = bitvec![1; self.config.gs.len()];
+        for (i,gs) in self.config.gs.iter().enumerate() {
             if gs.ip == self.my_ip {
                 continue;
             }
             let mut client = communication::gs_service_client::GsServiceClient::connect(format!("http://{}:37129", gs.ip)).await;
             if client.is_err() {
                 eprintln!("Failed to connect to GS: {}", gs.ip);
+                bitvec.set(i, false);
                 continue;
             }
             let mut client = client.unwrap();
@@ -214,7 +217,7 @@ impl GS {
         }
 
         let signatures = signatures.iter().collect::<Vec<&Signature>>();
-        let multi_signed_commit_record = MultiSigned::new(commit_record, bitvec![1; self.config.gs.len()], &signatures);
+        let multi_signed_commit_record = MultiSigned::new(commit_record, bitvec, &signatures);
         let elapsed = start.elapsed();
         println!("GSs gathered the signatures for commit record in {:?}", elapsed);
 
