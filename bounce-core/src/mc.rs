@@ -96,7 +96,7 @@ impl MC {
             sending_station_public_keys: self.sending_public_keys.clone(),
             satellite_public_keys: self.satellite_public_keys.clone(),
             t,
-            f: 5,
+            f: 0,
             genesis_record: multi_signed_genesis_record,
         };
         let serialized_start = bincode::serialize(&start).unwrap();
