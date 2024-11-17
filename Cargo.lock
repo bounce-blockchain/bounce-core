@@ -672,6 +672,7 @@ dependencies = [
 name = "distributed-timming-tests"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bls",
  "bounce-core",
  "keccak-hash",
