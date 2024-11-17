@@ -194,7 +194,12 @@ impl GS {
             if gs.ip == self.my_ip {
                 continue;
             }
-            let mut client = communication::gs_service_client::GsServiceClient::connect(format!("http://{}:37129", gs.ip)).await.unwrap();
+            let mut client = communication::gs_service_client::GsServiceClient::connect(format!("http://{}:37129", gs.ip)).await;
+            if client.is_err() {
+                eprintln!("Failed to connect to GS: {}", gs.ip);
+                continue;
+            }
+            let mut client = client.unwrap();
             let request = tonic::Request::new(communication::SignedCommitRecord {
                 signed_commit_record: serialized_signed_commit_record.clone(),
             });
