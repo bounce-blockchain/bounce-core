@@ -278,7 +278,7 @@ async fn main() {
             let mut benchmark = benchmark_lock.write().await;
             benchmark.run_benchmark(i).await;
             drop(benchmark);
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            //tokio::time::sleep(Duration::from_secs(1)).await;
         }
     });
 
