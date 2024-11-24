@@ -129,7 +129,7 @@ impl GsMerkleTreeHandler {
         }
 
         let root = mt.root().unwrap().to_vec();
-        let mut client = communication::ss_merkle_tree_handler_service_client::SsMerkleTreeHandlerServiceClient::connect(format!("http://{}:37140", archived.sender_ip)).await?;
+        let mut client = communication::ss_merkle_tree_handler_service_client::SsMerkleTreeHandlerServiceClient::connect(format!("http://{}:{}", archived.sender_ip, archived.sender_port)).await?;
         let mut sign_mk_response = tonic::Request::new(SignMerkleTreeResponse {
             signature: self.secret_key.sign(&root).to_bytes().to_vec(),
             root,

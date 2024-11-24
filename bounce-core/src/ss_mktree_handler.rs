@@ -160,6 +160,7 @@ impl SsMerkleTreeHandler {
         let sign_merkle_tree_request = SignMerkleTreeRequest {
             txs: std::mem::take(&mut self.transactions),
             sender_ip: self.my_ip.clone(),
+            sender_port: 37140,
         };
         let first_start = std::time::Instant::now();
         let start = std::time::Instant::now();

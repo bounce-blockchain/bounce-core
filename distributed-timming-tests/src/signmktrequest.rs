@@ -36,8 +36,10 @@ fn confidence_interval_90(durations: &mut [u128]) -> (u128, u128) {
 }
 
 struct Benchmark {
+    pub id: usize,
     pub config: Config,
     pub my_ip: String,
+    pub my_port: u16,
     pub sending_time_stamp: u128,
     pub receiving_time_elapsed: Vec<Vec<u128>>,
     // pub receiving_time_for_first_response: Vec<u128>,
@@ -54,14 +56,16 @@ struct Benchmark {
 }
 
 impl Benchmark {
-    pub fn new(config: Config, my_ip: String, txs: Vec<Transaction>, target_iterations:u32) -> Benchmark {
+    pub fn new(id:usize, config: Config, my_ip: String, my_port: u16, txs: Vec<Transaction>, target_iterations:u32) -> Benchmark {
         Benchmark {
+            id,
             receiving_time_elapsed: vec![vec![]; config.gs.len()],
             // receiving_time_for_first_response: vec![],
             // receiving_time_for_half_response: vec![],
             // receiving_time_for_all_response: vec![],
             config,
             my_ip,
+            my_port,
             sending_time_stamp: 0,
             current_received: 0,
             txs,
@@ -76,12 +80,13 @@ impl Benchmark {
 
     pub async fn run_benchmark(&mut self){
         self.iterations += 1;
-        println!("\nRunning benchmark iteration {}", self.iterations);
+        println!("\nRunning benchmark id {} iteration {}", self.id, self.iterations);
         let txs = self.txs.clone();
         self.root = [0; 32];
         let sign_merkle_tree_request = SignMerkleTreeRequest {
             txs,
             sender_ip: self.my_ip.clone(),
+            sender_port: self.my_port,
         };
         let elapsed = self.send_sign_merkle_tree_request(&sign_merkle_tree_request).await.unwrap();
         self.total_time += elapsed.as_millis();
@@ -223,9 +228,9 @@ impl SsMerkleTreeHandlerService for BenchmarkLockService {
                 println!("All root matched: {:?}", benchmark.all_root_matched);
                 println!("Average Total time: {}ms", benchmark.total_time/benchmark.target_iterations as u128);
                 let serialized = bincode::serialize(&benchmark.receiving_time_elapsed).unwrap();
-                let mut file = std::fs::File::create("receiving_time_elapsed.bin").unwrap();
+                let mut file = std::fs::File::create(format!("receiving_time_elapsed_{}.bin", benchmark.id)).unwrap();
                 file.write_all(&serialized).unwrap();
-                println!("data written to receiving_time_elapsed.bin");
+                println!("data written to receiving_time_elapsed_id.bin");
                 // println!("Average Sending time: {}ms", benchmark.sending_time/benchmark.target_iterations as u128);
                 // let (lower, upper) = confidence_interval_90(&mut benchmark.receiving_time_for_first_response);
                 // println!("90% confidence interval for receiving the first response: [{}, {}]", lower, upper);
@@ -252,7 +257,6 @@ async fn main() {
     let index = args[2].parse::<usize>().expect("Index should be a valid number");
 
     let config = Config::load_from_file(config_file);
-    let addr = "0.0.0.0:37140".to_string().parse().unwrap();
 
     let my_ip = config.ss[index].ip.clone();
 
@@ -290,29 +294,34 @@ async fn main() {
     let num_benchmarks = 10;
     let mut benchmarks = Vec::new();
     for i in 0..num_benchmarks {
-        let benchmark = Benchmark::new(config.clone(), my_ip.clone(), txs.clone(), 1);
+        let benchmark = Benchmark::new(i, config.clone(), my_ip.clone(), (37140 + i) as u16, txs.clone(), 1);
         let benchmark_lock = Arc::new(RwLock::new(benchmark));
         benchmarks.push(benchmark_lock);
     }
 
-    let benchmark_service = BenchmarkLockService {
-        benchmark: Arc::clone(&benchmarks[benchmarks.len()-1]),
-    };
-
     for i in 0..num_benchmarks {
         println!("Spawning benchmark {}", i);
         let benchmark_lock = Arc::clone(&benchmarks[i]);
+        let benchmark_service = BenchmarkLockService {
+            benchmark: Arc::clone(&benchmark_lock),
+        };
+        let addr:SocketAddr = format!("{}:{}", my_ip, 37140+i).parse().unwrap();
+        tokio::spawn(async move {
+            Server::builder()
+                .add_service(SsMerkleTreeHandlerServiceServer::new(benchmark_service))
+                .serve(addr.clone())
+                .await
+                .unwrap();
+        });
         tokio::time::sleep(Duration::from_secs(1)).await; // 1-second delay between each benchmark
         tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(15)).await; // wait for the server to start
+            tokio::time::sleep(Duration::from_secs((3+num_benchmarks) as u64)).await; // wait for the all servers to start
             let mut benchmark = benchmark_lock.write().await;
             benchmark.run_benchmark().await;
         });
     }
 
-    Server::builder()
-        .add_service(SsMerkleTreeHandlerServiceServer::new(benchmark_service))
-        .serve(addr)
-        .await
-        .unwrap();
+    loop {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+    }
 }
