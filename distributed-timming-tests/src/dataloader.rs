@@ -5,9 +5,12 @@ use serde_json::to_writer_pretty;
 
 
 fn main() -> std::io::Result<()> {
+    let sending_time = fs::read("sending_time_stamp.bin")?;
+    let sending_time: Vec<u128> = bincode::deserialize(&sending_time).expect("Failed to deserialize");
+    println!("sending times: {:?}", sending_time);
     let content = fs::read("receiving_time_elapsed_tiled.bin")?;
     let data: Vec<Vec<u128>> = bincode::deserialize(&content).expect("Failed to deserialize");
-    println!("Loaded data: {:?}", data);
+    //println!("Loaded data: {:?}", data);
     // let mut data: Vec<Vec<u128>> = Vec::new();
     // for i in 0..10 {
     //     let content = fs::read(format!("receiving_time_elapsed_{}.bin", i))?;
@@ -23,7 +26,7 @@ fn main() -> std::io::Result<()> {
     // }
     //
     // data.sort();
-
+    println!("Data:");
     for d in &data {
         println!("{:?}", d);
     }

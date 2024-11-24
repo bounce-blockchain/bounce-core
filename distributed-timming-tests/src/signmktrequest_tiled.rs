@@ -215,6 +215,10 @@ impl SsMerkleTreeHandlerService for BenchmarkLockService {
                     let mut file = std::fs::File::create("receiving_time_elapsed_tiled.bin").unwrap();
                     file.write_all(&serialized).unwrap();
                     println!("data written to receiving_time_elapsed_tiled.bin");
+                    let serialized = bincode::serialize(&benchmark.sending_time_stamp).unwrap();
+                    let mut file = std::fs::File::create("sending_time_stamp.bin").unwrap();
+                    file.write_all(&serialized).unwrap();
+                    println!("data written to sending_time_stamp.bin");
                 }
             }
         });
@@ -267,7 +271,7 @@ async fn main() {
     println!("Merkle tree built in {:?}", duration);
     let root = mt.root().unwrap();
 
-    let num_benchmarks = 3;
+    let num_benchmarks = 20;
     let mut txs_tiled = Vec::new();
     for i in 0..num_benchmarks {
         txs_tiled.push(txs.clone());
