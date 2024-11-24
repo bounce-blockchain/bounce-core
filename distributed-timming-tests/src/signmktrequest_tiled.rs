@@ -19,22 +19,6 @@ use bls::min_pk::PublicKey;
 use bounce_core::common::output_current_time;
 use bounce_core::communication;
 
-fn confidence_interval_90(durations: &mut [u128]) -> (u128, u128) {
-    durations.sort();
-
-    let len = durations.len();
-    let lower_idx = (len as f64 * 0.05).round() as usize;
-    let upper_idx = (len as f64 * 0.95).round() as usize;
-    if upper_idx == len {
-        return (durations[lower_idx], durations[upper_idx - 1]);
-    }
-
-    let lower = durations[lower_idx];
-    let upper = durations[upper_idx];
-
-    (lower, upper)
-}
-
 struct Benchmark {
     pub config: Config,
     pub my_ip: String,
@@ -52,7 +36,7 @@ struct Benchmark {
 }
 
 impl Benchmark {
-    pub fn new(config: Config, my_ip: String, my_port: u16, txs: Vec<Vec<Transaction>>, total_benchmarks:usize) -> Benchmark {
+    pub fn new(config: Config, my_ip: String, my_port: u16, txs: Vec<Vec<Transaction>>, total_benchmarks: usize) -> Benchmark {
         Benchmark {
             receiving_time_elapsed: vec![vec![]; total_benchmarks],
             num_received: vec![0; total_benchmarks],
@@ -70,41 +54,39 @@ impl Benchmark {
         }
     }
 
-    pub async fn run_benchmark(&mut self){
+    pub async fn run_benchmark(&mut self, i: usize) {
         //self.root = [0; 32];
-        for i in 0..self.total_benchmarks {
-            let current_time = std::time::SystemTime::now();
-            self.sending_time_stamp[i] = current_time.duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis();
-            println!("Sending sign_merkle_tree_request at {}", self.sending_time_stamp[i]);
-            println!("Benchmark {}", i);
-            let start = std::time::Instant::now();
-            let sign_merkle_tree_request = SignMerkleTreeRequest {
-                txs: std::mem::take(&mut self.txs[i]),
-                sender_ip: self.my_ip.clone(),
-                sender_port: self.my_port,
-                bench_id: i as u32,
-            };
-            let elapsed = start.elapsed();
-            println!("Create sign_merkle_tree_request in {:?}", elapsed);
-            let elapsed = self.send_sign_merkle_tree_request(&sign_merkle_tree_request).await.unwrap();
-            self.total_time += elapsed.as_millis();
+        let current_time = std::time::SystemTime::now();
+        self.sending_time_stamp[i] = current_time.duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis();
+        println!("Sending sign_merkle_tree_request at {}", self.sending_time_stamp[i]);
+        println!("Benchmark {}", i);
+        let start = std::time::Instant::now();
+        let sign_merkle_tree_request = SignMerkleTreeRequest {
+            txs: std::mem::take(&mut self.txs[i]),
+            sender_ip: self.my_ip.clone(),
+            sender_port: self.my_port,
+            bench_id: i as u32,
+        };
+        let elapsed = start.elapsed();
+        println!("Create sign_merkle_tree_request in {:?}", elapsed);
+        let elapsed = self.send_sign_merkle_tree_request(&sign_merkle_tree_request).await.unwrap();
+        self.total_time += elapsed.as_millis();
 
-            // let start = std::time::Instant::now();
-            // let tx_hashes = sign_merkle_tree_request.txs
-            //     .par_iter()
-            //     .map(|tx| keccak(tx.as_ref()).into())
-            //     .collect::<Vec<[u8; 32]>>();
-            // let elapsed = start.elapsed();
-            // println!("Hashed {} transactions in {:?}", tx_hashes.len(), elapsed);
-            // let start = std::time::Instant::now();
-            // let mt = MerkleTree::<Keccak256>::from_leaves(&tx_hashes);
-            // let duration = start.elapsed();
-            // println!("Merkle tree built in {:?}", duration);
-            // self.root = mt.root().unwrap();
-        }
+        // let start = std::time::Instant::now();
+        // let tx_hashes = sign_merkle_tree_request.txs
+        //     .par_iter()
+        //     .map(|tx| keccak(tx.as_ref()).into())
+        //     .collect::<Vec<[u8; 32]>>();
+        // let elapsed = start.elapsed();
+        // println!("Hashed {} transactions in {:?}", tx_hashes.len(), elapsed);
+        // let start = std::time::Instant::now();
+        // let mt = MerkleTree::<Keccak256>::from_leaves(&tx_hashes);
+        // let duration = start.elapsed();
+        // println!("Merkle tree built in {:?}", duration);
+        // self.root = mt.root().unwrap();
     }
 
-    pub async fn send_sign_merkle_tree_request(&mut self, sign_merkle_tree_request:&SignMerkleTreeRequest) -> std::io::Result<Duration> {
+    pub async fn send_sign_merkle_tree_request(&mut self, sign_merkle_tree_request: &SignMerkleTreeRequest) -> std::io::Result<Duration> {
         let first_start = std::time::Instant::now();
         let start = std::time::Instant::now();
         println!("Serializing sign_merkle_tree_request with {} txs", sign_merkle_tree_request.txs.len());
@@ -215,6 +197,10 @@ impl SsMerkleTreeHandlerService for BenchmarkLockService {
                     let mut file = std::fs::File::create("receiving_time_elapsed_tiled.bin").unwrap();
                     file.write_all(&serialized).unwrap();
                     println!("data written to receiving_time_elapsed_tiled.bin");
+                    let base_time = benchmark.sending_time_stamp[0];
+                    for i in 0..benchmark.total_benchmarks {
+                        benchmark.sending_time_stamp[i] = benchmark.sending_time_stamp[i] - base_time;
+                    }
                     let serialized = bincode::serialize(&benchmark.sending_time_stamp).unwrap();
                     let mut file = std::fs::File::create("sending_time_stamp.bin").unwrap();
                     file.write_all(&serialized).unwrap();
@@ -285,11 +271,15 @@ async fn main() {
     let benchmark_service = BenchmarkLockService {
         benchmark: Arc::clone(&benchmark_lock),
     };
-    let addr:SocketAddr = format!("{}:{}", my_ip, 37140).parse().unwrap();
+    let addr: SocketAddr = format!("{}:{}", my_ip, 37140).parse().unwrap();
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(3)).await; // wait for the server to start
-        let mut benchmark = benchmark_lock.write().await;
-        benchmark.run_benchmark().await;
+        for i in 0..num_benchmarks {
+            let mut benchmark = benchmark_lock.write().await;
+            benchmark.run_benchmark(i).await;
+            drop(benchmark);
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
     });
 
     Server::builder()
