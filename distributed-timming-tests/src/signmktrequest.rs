@@ -287,18 +287,28 @@ async fn main() {
     // let duration = start.elapsed();
     // println!("Merkle tree built in {:?}", duration);
 
-    let benchmark = Benchmark::new(config, my_ip, txs, 20);
-    let benchmark_lock = Arc::new(RwLock::new(benchmark));
+    let num_benchmarks = 1;
+    let mut benchmarks = Vec::new();
+    for i in 0..num_benchmarks {
+        let benchmark = Benchmark::new(config.clone(), my_ip.clone(), txs.clone(), 1);
+        let benchmark_lock = Arc::new(RwLock::new(benchmark));
+        benchmarks.push(benchmark_lock);
+    }
 
     let benchmark_service = BenchmarkLockService {
-        benchmark: Arc::clone(&benchmark_lock),
+        benchmark: Arc::clone(&benchmarks[benchmarks.len()-1]),
     };
 
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(3)).await; // wait for the server to start
-        let mut benchmark = benchmark_lock.write().await;
-        benchmark.run_benchmark().await;
-    });
+    for i in 0..num_benchmarks {
+        println!("Spawning benchmark {}", i);
+        let benchmark_lock = Arc::clone(&benchmarks[i]);
+        tokio::time::sleep(Duration::from_secs(1)).await; // 1-second delay between each benchmark
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(15)).await; // wait for the server to start
+            let mut benchmark = benchmark_lock.write().await;
+            benchmark.run_benchmark().await;
+        });
+    }
 
     Server::builder()
         .add_service(SsMerkleTreeHandlerServiceServer::new(benchmark_service))
