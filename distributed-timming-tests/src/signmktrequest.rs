@@ -291,7 +291,7 @@ async fn main() {
     // let duration = start.elapsed();
     // println!("Merkle tree built in {:?}", duration);
 
-    let num_benchmarks = 10;
+    let num_benchmarks = 100;
     let mut benchmarks = Vec::new();
     for i in 0..num_benchmarks {
         let benchmark = Benchmark::new(i, config.clone(), my_ip.clone(), (37140 + i) as u16, txs.clone(), 1);
