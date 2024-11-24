@@ -135,6 +135,7 @@ impl GsMerkleTreeHandler {
             root,
         });
         sign_mk_response.metadata_mut().insert("gs_ip", self.my_ip.parse().unwrap());
+        sign_mk_response.metadata_mut().insert("bench_id", archived.bench_id.to_string().parse().unwrap());
         client.handle_sign_merkle_tree_response(sign_mk_response).await?;
 
         let start = std::time::Instant::now();

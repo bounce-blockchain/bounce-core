@@ -87,6 +87,7 @@ impl Benchmark {
             txs,
             sender_ip: self.my_ip.clone(),
             sender_port: self.my_port,
+            bench_id: self.id as u32,
         };
         let elapsed = self.send_sign_merkle_tree_request(&sign_merkle_tree_request).await.unwrap();
         self.total_time += elapsed.as_millis();

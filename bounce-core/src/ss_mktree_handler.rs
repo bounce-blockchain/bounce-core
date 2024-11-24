@@ -161,6 +161,7 @@ impl SsMerkleTreeHandler {
             txs: std::mem::take(&mut self.transactions),
             sender_ip: self.my_ip.clone(),
             sender_port: 37140,
+            bench_id: 0,
         };
         let first_start = std::time::Instant::now();
         let start = std::time::Instant::now();

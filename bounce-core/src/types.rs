@@ -78,6 +78,7 @@ pub struct SignMerkleTreeRequest {
     pub txs: Vec<Transaction>,
     pub sender_ip: String,
     pub sender_port: u16,
+    pub bench_id: u32,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]

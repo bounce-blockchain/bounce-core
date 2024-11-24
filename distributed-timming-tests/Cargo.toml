@@ -24,3 +24,7 @@ path = "src/signmktrequest.rs"
 [[bin]]
 name = "dataloader"
 path = "src/dataloader.rs"
+
+[[bin]]
+name = "signmktrequest_tiled"
+path = "src/signmktrequest_tiled.rs"

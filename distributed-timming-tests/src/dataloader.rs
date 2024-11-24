@@ -5,23 +5,24 @@ use serde_json::to_writer_pretty;
 
 
 fn main() -> std::io::Result<()> {
-    // let content = fs::read("receiving_time_elapsed_5.bin")?;
-    // let data: Vec<Vec<u128>> = bincode::deserialize(&content).expect("Failed to deserialize");
-    // println!("Loaded data: {:?}", data);
-    let mut data: Vec<Vec<u128>> = Vec::new();
-    for i in 0..10 {
-        let content = fs::read(format!("receiving_time_elapsed_{}.bin", i))?;
-        let cur_data: Vec<Vec<u128>> = bincode::deserialize(&content).expect("Failed to deserialize");
-        //make the cur_data a single vector
-        let mut cur_data_single: Vec<u128> = Vec::new();
-        for d in cur_data {
-            for dd in d {
-                cur_data_single.push(dd);
-            }
-        }
-        data.push(cur_data_single);
-    }
-
+    let content = fs::read("receiving_time_elapsed_tiled.bin")?;
+    let data: Vec<Vec<u128>> = bincode::deserialize(&content).expect("Failed to deserialize");
+    println!("Loaded data: {:?}", data);
+    // let mut data: Vec<Vec<u128>> = Vec::new();
+    // for i in 0..10 {
+    //     let content = fs::read(format!("receiving_time_elapsed_{}.bin", i))?;
+    //     let cur_data: Vec<Vec<u128>> = bincode::deserialize(&content).expect("Failed to deserialize");
+    //     //make the cur_data a single vector
+    //     let mut cur_data_single: Vec<u128> = Vec::new();
+    //     for d in cur_data {
+    //         for dd in d {
+    //             cur_data_single.push(dd);
+    //         }
+    //     }
+    //     data.push(cur_data_single);
+    // }
+    //
+    // data.sort();
 
     for d in &data {
         println!("{:?}", d);
