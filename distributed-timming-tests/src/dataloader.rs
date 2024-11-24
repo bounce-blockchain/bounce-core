@@ -12,7 +12,14 @@ fn main() -> std::io::Result<()> {
     for i in 0..10 {
         let content = fs::read(format!("receiving_time_elapsed_{}.bin", i))?;
         let cur_data: Vec<Vec<u128>> = bincode::deserialize(&content).expect("Failed to deserialize");
-        data.extend(cur_data);
+        //make the cur_data a single vector
+        let mut cur_data_single: Vec<u128> = Vec::new();
+        for d in cur_data {
+            for dd in d {
+                cur_data_single.push(dd);
+            }
+        }
+        data.push(cur_data_single);
     }
 
 
