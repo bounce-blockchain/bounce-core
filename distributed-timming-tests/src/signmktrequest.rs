@@ -221,7 +221,7 @@ impl SsMerkleTreeHandlerService for BenchmarkLockService {
             } else {
                 println!("Benchmark finished");
                 println!("All root matched: {:?}", benchmark.all_root_matched);
-                println!("Average Total time: {}ms", benchmark.total_time/benchmark.target_iterations as u128);
+                println!("Average Total Sending time: {}ms", benchmark.total_time/benchmark.target_iterations as u128);
                 let serialized = bincode::serialize(&benchmark.receiving_time_elapsed).unwrap();
                 let mut file = std::fs::File::create("receiving_time_elapsed.bin").unwrap();
                 file.write_all(&serialized).unwrap();
@@ -287,7 +287,7 @@ async fn main() {
     // let duration = start.elapsed();
     // println!("Merkle tree built in {:?}", duration);
 
-    let benchmark = Benchmark::new(config, my_ip, txs, 20);
+    let benchmark = Benchmark::new(config, my_ip, txs, 2);
     let benchmark_lock = Arc::new(RwLock::new(benchmark));
 
     let benchmark_service = BenchmarkLockService {

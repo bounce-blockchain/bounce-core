@@ -24,7 +24,7 @@ pub struct GsMerkleTreeHandler {
 }
 
 impl GsMerkleTreeHandler {
-    pub fn new(secret_key: SecretKey, my_ip:String, gs_map:HashMap<String, HashSet<String>>) -> Self {
+    pub fn new(secret_key: SecretKey, my_ip: String, gs_map: HashMap<String, HashSet<String>>) -> Self {
         GsMerkleTreeHandler {
             secret_key,
             my_ip,
@@ -37,7 +37,17 @@ impl GsMerkleTreeHandler {
         let mut buffer = Vec::new();
         let mut chunk = vec![0u8; 2 * 1024 * 1024]; // Read in 2 MB chunks
 
-        let start = std::time::Instant::now();
+        //create socket for sending to other GSs
+        let gs_peers = self.gs_map.get(&self.my_ip);
+        let mut gs_peer_sockets = Vec::new();
+        if gs_peers.is_some() && !gs_peers.unwrap().is_empty() {
+            for gs_ip in self.gs_map.get(&self.my_ip).unwrap() {
+                let socket = TcpStream::connect(format!("{}:3100", gs_ip)).await.unwrap();
+                gs_peer_sockets.push(socket);
+            }
+        }
+
+        //let start = std::time::Instant::now();
         loop {
             // Read data into the chunk
             let bytes_read = match socket.read(&mut chunk).await {
@@ -51,46 +61,59 @@ impl GsMerkleTreeHandler {
                     return Err(Box::new(e));
                 }
             };
+            //spawn a thread to send to other GSs
+            for mut peer_socket in gs_peer_sockets.iter_mut() {
+                match peer_socket.write_all(&buffer).await {
+                    Ok(_) => {
+                        //println!("Sent {} bytes to a GS", shared_buffer.len());
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to write to socket: {:?}", e);
+                    }
+                }
+            }
 
             // Append the read data to the buffer
             buffer.extend_from_slice(&chunk[..bytes_read]);
         }
-        let elapsed_time = start.elapsed();
+        //drop sockets
+        drop(gs_peer_sockets);
+        //let elapsed_time = start.elapsed();
         //println!("Received {} bytes in {:.2?}", buffer.len(), elapsed_time);
 
         //output_current_time(&format!("Received {} bytes from a client", buffer.len()));
 
         let shared_buffer = Arc::new(buffer);
-
-        let gs_peers = self.gs_map.get(&self.my_ip);
-        //println!("GS ip: {}", self.my_ip);
-        //println!("GS peers: {:?}", gs_peers);
-        let mut gossip_join_set = JoinSet::new();
-        if gs_peers.is_some()&&!gs_peers.unwrap().is_empty() {
-            //println!("Gossiping to other GSs: {:?}", self.gs_map.get(&self.my_ip));
-            let start = std::time::Instant::now();
-            for gs_ip in self.gs_map.get(&self.my_ip).unwrap() {
-                let sharable_data = shared_buffer.clone();
-                let gs_ip = gs_ip.clone();
-                gossip_join_set.spawn({
-                    async move {
-                        let mut socket = TcpStream::connect(format!("{}:3100", gs_ip)).await.unwrap();
-                        match socket.write_all(&sharable_data).await {
-                            Ok(_) => {
-                                //println!("Sent {} bytes to {}", sharable_data.len(), gs_ip);
+        /*
+                let gs_peers = self.gs_map.get(&self.my_ip);
+                //println!("GS ip: {}", self.my_ip);
+                //println!("GS peers: {:?}", gs_peers);
+                let mut gossip_join_set = JoinSet::new();
+                if gs_peers.is_some()&&!gs_peers.unwrap().is_empty() {
+                    //println!("Gossiping to other GSs: {:?}", self.gs_map.get(&self.my_ip));
+                    let start = std::time::Instant::now();
+                    for gs_ip in self.gs_map.get(&self.my_ip).unwrap() {
+                        let sharable_data = shared_buffer.clone();
+                        let gs_ip = gs_ip.clone();
+                        gossip_join_set.spawn({
+                            async move {
+                                let mut socket = TcpStream::connect(format!("{}:3100", gs_ip)).await.unwrap();
+                                match socket.write_all(&sharable_data).await {
+                                    Ok(_) => {
+                                        //println!("Sent {} bytes to {}", sharable_data.len(), gs_ip);
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Failed to write to socket: {:?}", e);
+                                    }
+                                }
+                                drop(socket);
                             }
-                            Err(e) => {
-                                eprintln!("Failed to write to socket: {:?}", e);
-                            }
-                        }
-                        drop(socket);
+                        });
                     }
-                });
-            }
-            let elapsed_time = start.elapsed();
-            //println!("Spawned threads to gossip to other GSs in {:.2?}", elapsed_time);
-        }
-
+                    let elapsed_time = start.elapsed();
+                    //println!("Spawned threads to gossip to other GSs in {:.2?}", elapsed_time);
+                }
+        */
         // let start = std::time::Instant::now();
         // let decompressed = zstd::stream::decode_all(Cursor::new(&**shared_buffer)).unwrap();
         // let elapsed_time = start.elapsed();
@@ -137,17 +160,16 @@ impl GsMerkleTreeHandler {
         sign_mk_response.metadata_mut().insert("gs_ip", self.my_ip.parse().unwrap());
         client.handle_sign_merkle_tree_response(sign_mk_response).await?;
 
-        let start = std::time::Instant::now();
-        gossip_join_set.join_all().await;
-        let duration = start.elapsed();
+        // let start = std::time::Instant::now();
+        // gossip_join_set.join_all().await;
+        // let duration = start.elapsed();
         //println!("Awaiting Gossiping to other GSs: {:?}", duration);
 
         Ok(())
     }
-
 }
 
-pub async fn run_listener(gs_mktree_handler:GsMerkleTreeHandler, addr: SocketAddr) {
+pub async fn run_listener(gs_mktree_handler: GsMerkleTreeHandler, addr: SocketAddr) {
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
     println!("Server listening on {}", addr);
 
