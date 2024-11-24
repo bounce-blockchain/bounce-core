@@ -680,6 +680,7 @@ dependencies = [
  "rayon",
  "rkyv",
  "rs_merkle",
+ "serde_json",
  "tokio",
  "tonic",
  "zstd",
