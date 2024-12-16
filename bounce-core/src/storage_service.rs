@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::sync::{Arc, Mutex};
 use rocksdb::{DB};
 use keccak_hash::keccak;
 use crate::{ResetId, SlotId};
@@ -105,6 +106,26 @@ impl TxDataStore {
 
     pub fn get(&self, txroot: &[u8]) -> Option<Vec<u8>> {
         self.db.get(txroot).expect("failed to retrieve tx data")
+    }
+}
+
+#[derive(Clone)]
+pub struct StorageService {
+    pub cr_chain_store: Arc<Mutex<CrChainStore>>,
+    pub negative_cr_store: Arc<Mutex<NegativeCrStore>>,
+    pub tx_data_store: Arc<Mutex<TxDataStore>>,
+}
+
+impl StorageService {
+    pub fn new() -> Self {
+        let cr_chain_store = Arc::new(Mutex::new(CrChainStore::new()));
+        let negative_cr_store = Arc::new(Mutex::new(NegativeCrStore::new()));
+        let tx_data_store = Arc::new(Mutex::new(TxDataStore::new()));
+        StorageService {
+            cr_chain_store,
+            negative_cr_store,
+            tx_data_store,
+        }
     }
 }
 
