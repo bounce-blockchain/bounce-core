@@ -4,6 +4,7 @@ num_keys = 2
 num_ss = 1
 num_gs = 10
 num_sat = 1
+f = 9
 
 #[[sat]]
 #ip = "127.0.0.1"

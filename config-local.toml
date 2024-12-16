@@ -4,6 +4,7 @@ num_keys = 2
 num_ss = 1
 num_gs = 1
 num_sat = 1
+f = 0
 
 [[ss]]
 ip = "127.0.0.1"
