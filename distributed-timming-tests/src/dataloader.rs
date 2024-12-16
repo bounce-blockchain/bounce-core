@@ -38,8 +38,10 @@ fn main() -> std::io::Result<()> {
     // println!("Average: {}", sum / data[19].len() as u128);
 
     // Write the data as JSON to a file
-    // let json_file = File::create("receiving_time_elapsed_100_benchmarks.json").unwrap();
-    // to_writer_pretty(json_file, &data).unwrap();
+    let json_file = File::create("sending_time_stamp.json").unwrap();
+    to_writer_pretty(json_file, &sending_time).unwrap();
+    let json_file = File::create("receiving_time_elapsed_tiled.json").unwrap();
+    to_writer_pretty(json_file, &data).unwrap();
     // println!("Data has been reserialized into JSON");
     Ok(())
 }
