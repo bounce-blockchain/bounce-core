@@ -20,6 +20,7 @@ rand = "0.8.5"
 rayon = "1.10.0"
 rkyv = "0.8.8"
 rs_merkle = "1.4.2"
+rocksdb = "0.22.0"
 serde = { version = "1.0.210", features = ["derive"] }
 tokio = { version = "1.40.0", features = ["full"] }
 

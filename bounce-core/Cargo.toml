@@ -16,6 +16,7 @@ prost = "0.13.3"
 rand = { workspace = true }
 rayon = { workspace = true }
 rkyv = { workspace = true }
+rocksdb = { workspace = true }
 rs_merkle = { workspace = true }
 serde = { workspace = true }
 slot-clock = { path = "../slot-clock" }
