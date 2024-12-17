@@ -264,6 +264,8 @@ async fn main() {
     let elapsed = start.elapsed();
     println!("Mktree_handler Generated {} random transactions in {:?}", num_txs, elapsed);
 
+    println!("Running benchmarks with {} gs", config.gs.len());
+
     let mut benchmark = Benchmark::new(config.clone(), my_ip.clone(), 37140, txs_tiled, num_benchmarks);
     benchmark.root = root;
     let benchmark_lock = Arc::new(RwLock::new(benchmark));
