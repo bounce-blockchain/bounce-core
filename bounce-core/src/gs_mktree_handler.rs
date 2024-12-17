@@ -133,15 +133,15 @@ impl GsMerkleTreeHandler {
 
         let root = mt.root().unwrap().to_vec();
 
-        let start = std::time::Instant::now();
-        let tx_data_store = self.storage_service.tx_data_store.clone();
-        let root_copy = root.clone();
-        let shared_buffer_copy = shared_buffer.clone();
-        tokio::task::spawn_blocking(move || {
-            tx_data_store.put(&root_copy, &shared_buffer_copy);
-        }).await?;
-        let duration = start.elapsed();
-        println!("Storing txs: {:?}", duration);
+        // let start = std::time::Instant::now();
+        // let tx_data_store = self.storage_service.tx_data_store.clone();
+        // let root_copy = root.clone();
+        // let shared_buffer_copy = shared_buffer.clone();
+        // tokio::task::spawn_blocking(move || {
+        //     tx_data_store.put(&root_copy, &shared_buffer_copy);
+        // }).await?;
+        // let duration = start.elapsed();
+        // println!("Storing txs: {:?}", duration);
 
         let mut client = communication::ss_merkle_tree_handler_service_client::SsMerkleTreeHandlerServiceClient::connect(format!("http://{}:37140", archived.sender_ip)).await?;
         let mut sign_mk_response = tonic::Request::new(SignMerkleTreeResponse {
