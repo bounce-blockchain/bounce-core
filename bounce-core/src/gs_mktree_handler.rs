@@ -134,11 +134,10 @@ impl GsMerkleTreeHandler {
         let root = mt.root().unwrap().to_vec();
 
         let start = std::time::Instant::now();
-        let tx_data_store_lock_service = self.storage_service.tx_data_store.clone();
+        let tx_data_store = self.storage_service.tx_data_store.clone();
         let root_copy = root.clone();
         let shared_buffer_copy = shared_buffer.clone();
         tokio::task::spawn_blocking(move || {
-            let tx_data_store = tx_data_store_lock_service.lock().unwrap();
             tx_data_store.put(&root_copy, &shared_buffer_copy);
         }).await?;
         let duration = start.elapsed();

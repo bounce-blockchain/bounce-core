@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use rocksdb::{DB};
 use keccak_hash::keccak;
 use crate::{ResetId, SlotId};
@@ -111,16 +111,16 @@ impl TxDataStore {
 
 #[derive(Clone)]
 pub struct StorageService {
-    pub cr_chain_store: Arc<Mutex<CrChainStore>>,
-    pub negative_cr_store: Arc<Mutex<NegativeCrStore>>,
-    pub tx_data_store: Arc<Mutex<TxDataStore>>,
+    pub cr_chain_store: Arc<CrChainStore>,
+    pub negative_cr_store: Arc<NegativeCrStore>,
+    pub tx_data_store: Arc<TxDataStore>,
 }
 
 impl StorageService {
     pub fn new() -> Self {
-        let cr_chain_store = Arc::new(Mutex::new(CrChainStore::new()));
-        let negative_cr_store = Arc::new(Mutex::new(NegativeCrStore::new()));
-        let tx_data_store = Arc::new(Mutex::new(TxDataStore::new()));
+        let cr_chain_store = Arc::new(CrChainStore::new());
+        let negative_cr_store = Arc::new(NegativeCrStore::new());
+        let tx_data_store = Arc::new(TxDataStore::new());
         StorageService {
             cr_chain_store,
             negative_cr_store,
