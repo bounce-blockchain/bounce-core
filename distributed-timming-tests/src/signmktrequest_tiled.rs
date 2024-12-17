@@ -192,7 +192,7 @@ impl SsMerkleTreeHandlerService for BenchmarkLockService {
                 if benchmark.num_bench_completed == benchmark.total_benchmarks {
                     println!("Benchmark finished");
                     println!("All root matched: {:?}", benchmark.all_root_matched);
-                    println!("Total time: {}ms", benchmark.total_time);
+                    println!("Total sending time: {}ms", benchmark.total_time);
                     let serialized = bincode::serialize(&benchmark.receiving_time_elapsed).unwrap();
                     let mut file = std::fs::File::create("receiving_time_elapsed_tiled.bin").unwrap();
                     file.write_all(&serialized).unwrap();
@@ -229,7 +229,6 @@ async fn main() {
 
     let num_txs = 1_000_000;
     println!("Mktree_handler Generating {} random transactions...", num_txs);
-    let start = std::time::Instant::now();
     let mut txs = Vec::new();
     for i in 0..num_txs {
         let mut rng = rand::thread_rng();
@@ -274,12 +273,22 @@ async fn main() {
     let addr: SocketAddr = format!("{}:{}", my_ip, 37140).parse().unwrap();
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(3)).await; // wait for the server to start
+        let start = std::time::Instant::now();
         for i in 0..num_benchmarks {
-            let mut benchmark = benchmark_lock.write().await;
-            benchmark.run_benchmark(i).await;
-            drop(benchmark);
-            //tokio::time::sleep(Duration::from_secs(1)).await;
+            let start = std::time::Instant::now();
+            {
+                let mut benchmark = benchmark_lock.write().await;
+                benchmark.run_benchmark(i).await;
+            }
+            let elapsed = start.elapsed();
+            println!("Benchmark {} completed in {:?}", i, elapsed);
+            if elapsed < Duration::from_secs(1) {
+                println!("Sleeping for {:?}", Duration::from_secs(1) - elapsed);
+                tokio::time::sleep(Duration::from_secs(1) - elapsed).await;
+            }
         }
+        let elapsed = start.elapsed();
+        println!("All benchmarks completed in {:?}", elapsed);
     });
 
     Server::builder()
