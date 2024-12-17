@@ -9,5 +9,7 @@ pub mod communication {
 pub mod ss_mktree_handler;
 pub mod gs_mktree_handler;
 
+pub mod storage_service;
+
 pub type SlotId = u64;
 pub type ResetId = u64;

@@ -16,6 +16,7 @@ pub struct MCComponent {
     pub num_ss: u32,
     pub num_gs: u32,
     pub num_sat: u32,
+    pub f: u32,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]

@@ -15,20 +15,23 @@ use bls::min_pk::SecretKey;
 use crate::common::output_current_time;
 use crate::communication;
 use crate::communication::SignMerkleTreeResponse;
+use crate::storage_service::StorageService;
 use crate::types::{ArchivedSignMerkleTreeRequest, Keccak256};
 
 pub struct GsMerkleTreeHandler {
     pub secret_key: SecretKey,
     pub my_ip: String,
     pub gs_map: HashMap<String, HashSet<String>>,
+    pub storage_service: StorageService,
 }
 
 impl GsMerkleTreeHandler {
-    pub fn new(secret_key: SecretKey, my_ip:String, gs_map:HashMap<String, HashSet<String>>) -> Self {
+    pub fn new(secret_key: SecretKey, my_ip:String, gs_map:HashMap<String, HashSet<String>>, storage_service: StorageService) -> Self {
         GsMerkleTreeHandler {
             secret_key,
             my_ip,
             gs_map,
+            storage_service,
         }
     }
 
@@ -129,7 +132,19 @@ impl GsMerkleTreeHandler {
         }
 
         let root = mt.root().unwrap().to_vec();
-        let mut client = communication::ss_merkle_tree_handler_service_client::SsMerkleTreeHandlerServiceClient::connect(format!("http://{}:{}", archived.sender_ip, archived.sender_port)).await?;
+
+        let start = std::time::Instant::now();
+        let tx_data_store_lock_service = self.storage_service.tx_data_store.clone();
+        let root_copy = root.clone();
+        let shared_buffer_copy = shared_buffer.clone();
+        tokio::task::spawn_blocking(move || {
+            let tx_data_store = tx_data_store_lock_service.lock().unwrap();
+            tx_data_store.put(&root_copy, &shared_buffer_copy);
+        }).await?;
+        let duration = start.elapsed();
+        println!("Storing txs: {:?}", duration);
+
+        let mut client = communication::ss_merkle_tree_handler_service_client::SsMerkleTreeHandlerServiceClient::connect(format!("http://{}:37140", archived.sender_ip)).await?;
         let mut sign_mk_response = tonic::Request::new(SignMerkleTreeResponse {
             signature: self.secret_key.sign(&root).to_bytes().to_vec(),
             root,

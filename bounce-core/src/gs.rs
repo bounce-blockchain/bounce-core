@@ -13,6 +13,7 @@ use bls::min_pk::proof_of_possession::*;
 use bounce_core::config::Config;
 use bounce_core::gs_mktree_handler;
 use bounce_core::gs_mktree_handler::GsMerkleTreeHandler;
+use bounce_core::storage_service::StorageService;
 use bounce_core::types::{MultiSigned, SenderType, SignedCommitRecord, Start};
 use communication::{gs_service_server::{GsService, GsServiceServer}, Response as GrpcResponse};
 use key_manager::keyloader;
@@ -34,6 +35,8 @@ pub struct GS {
     mission_control_public_keys: Vec<PublicKey>,
     f: u32,
     mc_limit: f32, // The fraction of Mission Control signatures required to accept a message. Default is 0.7.
+
+    storage_service: StorageService,
 }
 
 pub struct GSLockService {
@@ -125,7 +128,7 @@ impl GsService for GSLockService {
 }
 
 impl GS {
-    pub fn new(config: Config, my_ip: String, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>) -> Self {
+    pub fn new(config: Config, my_ip: String, secret_key: SecretKey, mission_control_public_keys: Vec<PublicKey>, storage_service: StorageService) -> Self {
         GS {
             config,
             my_ip,
@@ -136,6 +139,7 @@ impl GS {
             mission_control_public_keys,
             f: 0,
             mc_limit: 0.7,
+            storage_service,
         }
     }
 
@@ -246,7 +250,9 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     let gs_ips = config.gs.iter().map(|gs| gs.ip.clone()).collect::<Vec<String>>();
     let my_ip = gs_ips[index].clone();
 
-    let gs = GS::new(config.clone(), my_ip.clone(), secret_key.clone(), mission_control_public_keys);
+    let storage_service = StorageService::new();
+
+    let gs = GS::new(config.clone(), my_ip.clone(), secret_key.clone(), mission_control_public_keys, storage_service.clone());
 
     println!("GS is listening on {}", addr);
 
@@ -259,7 +265,7 @@ pub async fn run_gs(config_file: &str, index: usize) -> Result<(), Box<dyn std::
     println!("GS map: {:?}", gs_map);
     for port in ports {
         let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
-        let gs_mktree_handler = GsMerkleTreeHandler::new(secret_key.clone(), my_ip.clone(), gs_map.clone());
+        let gs_mktree_handler = GsMerkleTreeHandler::new(secret_key.clone(), my_ip.clone(), gs_map.clone(), storage_service.clone());
         tasks.push(tokio::task::spawn(gs_mktree_handler::run_listener(gs_mktree_handler, addr)));
     }
 
