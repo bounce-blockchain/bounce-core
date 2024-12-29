@@ -7,6 +7,7 @@ pub mod communication {
 }
 
 pub mod ss_mktree_handler;
+pub mod ss_client_txs_receiver;
 pub mod gs_mktree_handler;
 
 pub mod storage_service;

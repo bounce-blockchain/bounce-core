@@ -8,7 +8,7 @@ use rand::Rng;
 use rkyv::rancor::Error;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::RwLock;
 use tokio::task::JoinSet;
 use tonic::{Request, Response, Status};
@@ -32,6 +32,7 @@ pub struct SsMerkleTreeHandler {
     pub my_ip: String,
     pub gs_tx_receiver_ports: Vec<u16>,
     pub sender_to_ss: UnboundedSender<MultiSigned<[u8; 32]>>,
+    pub client_txs_receiver: UnboundedReceiver<Vec<Transaction>>,
 
     pub secret_key: SecretKey,
     pub ground_station_public_keys: Vec<PublicKey>,
@@ -130,11 +131,18 @@ impl SsMerkleTreeHandler {
         let elapsed = start.elapsed();
         println!("Mktree_handler Generated 1_000_000 random transactions in {:?}", elapsed);
 
+        //Spawn a thread for the ss_client_txs_receiver
+        let (client_txs_sender, client_txs_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let mut ss_client_txs_receiver = crate::ss_client_txs_receiver::SsClientTxsReceiver::new(client_txs_sender);
+        crate::ss_client_txs_receiver::run_ss_client_txs_receiver(ss_client_txs_receiver);
+
+
         SsMerkleTreeHandler {
             config,
             my_ip,
             gs_tx_receiver_ports: vec![3100],
             sender_to_ss,
+            client_txs_receiver,
 
             secret_key,
             ground_station_public_keys,
