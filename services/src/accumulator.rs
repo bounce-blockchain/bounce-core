@@ -105,12 +105,14 @@ fn process_transaction(
     let elapsed = start.elapsed();
     //println!("Read wallet in {:.4?}", elapsed);
 
-    if wallet.seqnum > seqnum {
+    //println!("wallet.seqnum: {}", wallet.seqnum);
+    if wallet.seqnum >= seqnum {
         let mut tx_counter = tx_counter.lock().unwrap();
         tx_counter.tx_bad_seqnum += 1;
         return;
     }
 
+    //println!("wallet.balance: {}, tx_inner.value: {}", wallet.balance, tx_inner.value);
     if wallet.balance < tx_inner.value {
         let mut tx_counter = tx_counter.lock().unwrap();
         tx_counter.tx_overdraft += 1;
@@ -123,7 +125,7 @@ fn process_transaction(
         let updated_wallet = Wallet {
             id: u64::from(wallet.id),
             balance: wallet.balance - tx_inner.value,
-            seqnum: seqnum + 1,
+            seqnum,
         };
         let encoded = rkyv::to_bytes::<rancor::Error>(&updated_wallet).unwrap();
         let mut seen_txs = seen_txs.write().unwrap();
@@ -175,19 +177,24 @@ fn process_roots(
         });
 
         let start = std::time::Instant::now();
-        let mut keys = Vec::new();
-        let mut values = Vec::new();
-        while let Ok((key,encoded)) = updates_consumer.recv_timeout(Duration::from_millis(1)) {
-            keys.push(key);
-            values.push(encoded);
-        }
-        let elapsed = start.elapsed();
-        println!("Received updates in {:.4?}", elapsed);
-        let start = std::time::Instant::now();
+        // let mut keys = Vec::new();
+        // let mut values = Vec::new();
         {
             let mut write_trie = trie.write().unwrap();
-            write_trie.db.insert_batch(keys, values).unwrap();
+            while let Ok((key, encoded)) = updates_consumer.recv_timeout(Duration::from_millis(1)) {
+                // keys.push(key);
+                // values.push(encoded);
+                write_trie.insert(&key, &encoded).unwrap();
+            }
         }
+        // let elapsed = start.elapsed();
+        // println!("Received updates in {:.4?}", elapsed);
+        // let start = std::time::Instant::now();
+        // {
+        //     let mut write_trie = trie.write().unwrap();
+        //     write_trie.db.insert_batch(keys, values).unwrap();
+        //     write_trie.db.flush().unwrap();
+        // }
         let elapsed = start.elapsed();
         println!("Updated trie in {:.2?}", elapsed);
     } else {
