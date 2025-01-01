@@ -125,6 +125,7 @@ impl SsMerkleTreeHandler {
                 PublicKey::default(),
                 i,
                 data,
+                (i,0)
             );
             txs.push(tx);
         }

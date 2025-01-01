@@ -1,0 +1,22 @@
+[package]
+name = "services"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+crossbeam-channel = "0.5"
+rand = "0.9.0-beta.1"
+bincode = { workspace = true }
+bls = { path = "../bls", features = ["proptest"] }
+bounce-core = { path = "../bounce-core" }
+eth_trie = "0.5.0"
+keccak-hash = { workspace = true }
+rayon = "1.10.0"
+rkyv = { workspace = true }
+rs_merkle = { workspace = true }
+serde = { workspace = true }
+
+
+[[bin]]
+name = "accumulator"
+path = "src/accumulator.rs"

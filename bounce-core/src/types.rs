@@ -33,27 +33,29 @@ pub enum SenderType {
 pub struct Transaction(pub Vec<u8>);
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct TxInner {
+pub struct TxInner {
     pub from: PublicKey,
     pub to: PublicKey,
     pub value: u64,
     pub data: Vec<u8>,
+    pub id: (u64,u64)
 }
 
 impl TxInner {
-    pub fn new(from: PublicKey, to: PublicKey, value: u64, data: Vec<u8>) -> Self {
+    pub fn new(from: PublicKey, to: PublicKey, value: u64, data: Vec<u8>, id: (u64,u64)) -> Self {
         Self {
             from,
             to,
             value,
             data,
+            id,
         }
     }
 }
 
 impl Transaction {
-    pub fn new(from: PublicKey, to: PublicKey, value: u64, data: Vec<u8>) -> Self {
-        let tx_inner = TxInner::new(from, to, value, data);
+    pub fn new(from: PublicKey, to: PublicKey, value: u64, data: Vec<u8>, id:(u64,u64)) -> Self {
+        let tx_inner = TxInner::new(from, to, value, data, id);
         let encoded = bincode::serialize(&tx_inner).unwrap();
 
         Self(encoded)
@@ -204,7 +206,7 @@ mod tests {
         let value = 123;
         let data = b"hello, world!".to_vec();
 
-        let tx = Transaction::new(from_pk, to_pk, value, data);
+        let tx = Transaction::new(from_pk, to_pk, value, data, (1, 2));
 
         let _tx_inner: TxInner = bincode::deserialize(tx.as_ref()).unwrap();
     }
@@ -219,7 +221,8 @@ mod tests {
 
         let value = 0;
         let data = vec![];
-        let tx = Transaction::new(from_pk, to_pk, value, data);
+        let id = "123".to_string();
+        let tx = Transaction::new(from_pk, to_pk, value, data, (1, 2));
 
         println!("tx size: {}", tx.as_ref().len());
         println!("public key size: {}", std::mem::size_of::<PublicKey>());

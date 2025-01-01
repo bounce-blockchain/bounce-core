@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "bounce-core",
-    "bls", "key-manager", "local-timming-tests", "slot-clock", "distributed-timming-tests",
+    "bls", "key-manager", "local-timming-tests", "slot-clock", "distributed-timming-tests", "services",
 ]
 resolver = "2"
 
