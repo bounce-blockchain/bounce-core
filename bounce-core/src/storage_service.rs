@@ -235,6 +235,7 @@ mod tests{
             PublicKey::default(),
             0,
             vec![0u8],
+            (0, 0),
         );
         let mut txs = vec![tx1.clone()];
         let tx2 = Transaction::new(
@@ -242,6 +243,7 @@ mod tests{
             PublicKey::default(),
             1,
             vec![2u8],
+            (0, 1),
         );
         txs.push(tx2);
 
