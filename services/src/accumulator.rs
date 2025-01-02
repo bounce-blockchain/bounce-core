@@ -1,4 +1,6 @@
-use eth_trie::{EthTrie, MemoryDB, Trie, DB};
+mod db;
+
+use eth_trie::{EthTrie, Trie, DB};
 use rand::{Rng};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
@@ -10,6 +12,7 @@ use rs_merkle::MerkleTree;
 use bounce_core::types::{Keccak256, Transaction, TxInner};
 use bls::min_pk::{PublicKey};
 use serde::{Deserialize};
+use services::db::MemoryDB;
 
 const TRANSACTIONS_PER_TREE: usize = 100_000;
 const ROOTS_PER_SLOT: usize = 10;
