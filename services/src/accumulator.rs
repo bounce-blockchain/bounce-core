@@ -161,10 +161,10 @@ fn process_roots(
         let elapsed = start.elapsed();
         println!("Processed transactions in {:.2?}", elapsed);
 
-        let start = std::time::Instant::now();
         // Batch updates to the trie in parallel
         let shared_db = db.clone();
         std::thread::spawn(move || {
+            let start = std::time::Instant::now();
             let mut keys = Vec::new();
             let mut values = Vec::new();
             while let Ok((key, encoded)) = updates_consumer.recv_timeout(Duration::from_millis(1)) {
@@ -172,9 +172,9 @@ fn process_roots(
                 values.push(encoded);
             }
             shared_db.insert_batch(keys, values).unwrap();
+            let elapsed = start.elapsed();
+            println!("Updated trie in {:.2?} (concurrently)", elapsed);
         });
-        let elapsed = start.elapsed();
-        println!("Updated trie in {:.2?}", elapsed);
     } else {
         println!("Root already processed");
     }
