@@ -83,6 +83,10 @@ fn process_transaction(
     // Read wallet from trie
     let wallet_id:u64 = tx_inner.from.into();
     let seqnum:u64 = tx_inner.seqnum.into();
+    if seen_txs.contains(&(wallet_id, seqnum)) {
+        tx_counter.lock().unwrap().tx_bad_seqnum += 1;
+        return;
+    }
     // let wallet_encoded = {
     //     let read_trie = trie.read().unwrap();
     //     match read_trie.get(&key) {
