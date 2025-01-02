@@ -112,8 +112,22 @@ fn process_transaction(
 
     let encoded = rkyv::to_bytes::<rancor::Error>(&updated_wallet).unwrap();
 
+    let target_wallet_id:u64 = tx_inner.to.into();
+    let target_wallet_encoded = db.get(&target_wallet_id.to_be_bytes()).unwrap().unwrap();
+    let target_wallet = unsafe { rkyv::access_unchecked::<ArchivedWallet>(&target_wallet_encoded) };
+
+    let updated_target_wallet = Wallet {
+        id: u64::from(target_wallet.id),
+        balance: target_wallet.balance + tx_inner.value,
+        seqnum: target_wallet.seqnum.into(),
+    };
+
+    let encoded_target = rkyv::to_bytes::<rancor::Error>(&updated_target_wallet).unwrap();
+
     if seen_txs.insert((wallet_id, seqnum)) {
         updates_producer.send((wallet_id.to_be_bytes().to_vec(), encoded.to_vec())).unwrap();
+        updates_producer.send((target_wallet_id.to_be_bytes().to_vec(), encoded_target.to_vec())).unwrap();
+
         tx_counter.lock().unwrap().tx_success += 1;
     } else {
         tx_counter.lock().unwrap().tx_bad_seqnum += 1;
