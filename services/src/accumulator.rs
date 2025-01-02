@@ -1,7 +1,6 @@
 use eth_trie::{EthTrie, MemoryDB, Trie, DB};
 use rand::{Rng};
 use std::sync::{Arc, Mutex, RwLock};
-use std::thread;
 use std::time::Duration;
 use dashmap::DashSet;
 use keccak_hash::keccak;
@@ -71,7 +70,8 @@ fn build_merkle_tree(transactions: &[Transaction]) -> Vec<u8> {
 fn process_transaction(
     transaction: &Transaction,
     seen_txs: &DashSet<(u64, u64)>,
-    trie: &Arc<RwLock<EthTrie<MemoryDB>>>,
+    //trie: &Arc<RwLock<EthTrie<MemoryDB>>>,
+    db: &Arc<MemoryDB>,
     updates_producer: &crossbeam_channel::Sender<(Vec<u8>, Vec<u8>)>,
     tx_counter: &Arc<Mutex<TxCounter>>,
 ) {
@@ -80,13 +80,14 @@ fn process_transaction(
 
     // Read wallet from trie
     let key = wallet_id.to_be_bytes();
-    let wallet_encoded = {
-        let read_trie = trie.read().unwrap();
-        match read_trie.get(&key) {
-            Ok(Some(wallet)) => wallet.clone(),
-            _ => return,
-        }
-    };
+    // let wallet_encoded = {
+    //     let read_trie = trie.read().unwrap();
+    //     match read_trie.get(&key) {
+    //         Ok(Some(wallet)) => wallet.clone(),
+    //         _ => return,
+    //     }
+    // };
+    let wallet_encoded = db.get(&key).unwrap().unwrap();
 
     let wallet = unsafe { rkyv::access_unchecked::<ArchivedWallet>(&wallet_encoded) };
 
@@ -119,7 +120,8 @@ fn process_transaction(
 fn process_roots(
     committed: &(Vec<u8>, Vec<Transaction>),
     seen_roots: Arc<DashSet<Vec<u8>>>,
-    trie: Arc<RwLock<EthTrie<MemoryDB>>>,
+    //trie: Arc<RwLock<EthTrie<MemoryDB>>>,
+    db: Arc<MemoryDB>,
     tx_counter: Arc<Mutex<TxCounter>>,
 ) {
     let (root, transactions) = committed;
@@ -134,7 +136,7 @@ fn process_roots(
             process_transaction(
                 transaction,
                 &shared_seen_txs,
-                &trie,
+                &db,
                 &updates_producer,
                 &tx_counter,
             );
@@ -143,18 +145,17 @@ fn process_roots(
         println!("Processed transactions in {:.2?}", elapsed);
 
         let start = std::time::Instant::now();
-        // Batch updates to the trie
-        let mut batched_updates = Vec::new();
-        while let Ok((key, encoded)) = updates_consumer.recv_timeout(Duration::from_millis(1)) {
-            batched_updates.push((key, encoded));
-        }
-
-        if !batched_updates.is_empty() {
-            let mut write_trie = trie.write().unwrap();
-            for (key, encoded) in batched_updates {
-                write_trie.insert(&key, &encoded).unwrap();
+        // Batch updates to the trie in parallel
+        let shared_db = db.clone();
+        std::thread::spawn(move || {
+            let mut keys = Vec::new();
+            let mut values = Vec::new();
+            while let Ok((key, encoded)) = updates_consumer.recv_timeout(Duration::from_millis(1)) {
+                keys.push(key);
+                values.push(encoded);
             }
-        }
+            shared_db.insert_batch(keys, values).unwrap();
+        });
         let elapsed = start.elapsed();
         println!("Updated trie in {:.2?}", elapsed);
     } else {
@@ -166,7 +167,7 @@ fn main() {
     println!("Generating {NUM_WALLETS} Wallets stored in the trie...");
 
     let db = Arc::new(MemoryDB::new(false));
-    let mut trie = EthTrie::new(db.clone());
+    //let mut trie = EthTrie::new(db.clone());
     for i in 0..NUM_WALLETS {
         let wallet = Wallet {
             id: i as u64,
@@ -174,7 +175,8 @@ fn main() {
             seqnum: 0,
         };
         let encoded = rkyv::to_bytes::<rancor::Error>(&wallet).unwrap();
-        trie.insert(&wallet.id.to_be_bytes(), &encoded).unwrap();
+       // trie.insert(&wallet.id.to_be_bytes(), &encoded).unwrap();
+        db.insert(&wallet.id.to_be_bytes(), encoded.to_vec()).unwrap();
     }
 
     let mut wallet_id_seqnum_pairs_total = Vec::new();
@@ -229,15 +231,16 @@ fn main() {
     };
 
     let shared_seen_roots = Arc::new(DashSet::new());
-    let shared_trie = Arc::new(RwLock::new(trie));
+    //let shared_trie = Arc::new(RwLock::new(trie));
     let shared_tx_counter = Arc::new(Mutex::new(tx_counter));
     for i in 1..=NUM_SLOT {
         let start = std::time::Instant::now();
         for j in 0..ROOTS_PER_SLOT {
             let shared_seen_roots = shared_seen_roots.clone();
-            let shared_trie = shared_trie.clone();
+            //let shared_trie = shared_trie.clone();
+            let shared_db = db.clone();
             let shared_tx_counter = shared_tx_counter.clone();
-            process_roots(&merkle_trees_total[i-1][j], shared_seen_roots, shared_trie, shared_tx_counter);
+            process_roots(&merkle_trees_total[i-1][j], shared_seen_roots, shared_db, shared_tx_counter);
         }
         let elapsed = start.elapsed();
         println!("Processed roots for slot {} in {:.2?}", i, elapsed);
@@ -249,7 +252,6 @@ fn main() {
     println!("Processed {} transactions successfully({}%) with {} overdrafts({}%) and {} bad seqnums({}%).", tx_counter.tx_success, tx_counter.tx_success * 100 / total_txs, tx_counter.tx_overdraft, tx_counter.tx_overdraft * 100 / total_txs, tx_counter.tx_bad_seqnum, tx_counter.tx_bad_seqnum * 100 / total_txs);
 
 
-    // Allow time for processing (example: 20 seconds).
-    thread::sleep(Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(3));
     println!("Finished processing roots.");
 }
