@@ -231,19 +231,19 @@ mod tests{
     fn test_tx_data() {
         let tx_data_store = TxDataStore::new();
         let tx1 = Transaction::new(
-            PublicKey::default(),
-            PublicKey::default(),
+            0,
+            1,
             0,
             vec![0u8],
-            (0, 0),
+            1,
         );
         let mut txs = vec![tx1.clone()];
         let tx2 = Transaction::new(
-            PublicKey::default(),
-            PublicKey::default(),
+            0,
             1,
-            vec![2u8],
-            (0, 1),
+            0,
+            vec![0u8],
+            2,
         );
         txs.push(tx2);
 

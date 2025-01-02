@@ -121,11 +121,11 @@ impl SsMerkleTreeHandler {
             rng.fill(&mut data);
             let data = data.to_vec();
             let tx = Transaction::new(
-                PublicKey::default(),
-                PublicKey::default(),
+                0,
+                1,
                 i,
                 data,
-                (i,0)
+                1,
             );
             txs.push(tx);
         }

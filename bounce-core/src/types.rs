@@ -4,6 +4,7 @@ use anyhow::{anyhow, Result};
 use bitvec::prelude::*;
 use keccak_hash::write_keccak;
 use rkyv;
+use rkyv::rancor::Error;
 use rs_merkle::Hasher;
 use serde::{Deserialize, Serialize};
 
@@ -32,33 +33,37 @@ pub enum SenderType {
 )]
 pub struct Transaction(pub Vec<u8>);
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(rkyv::Archive, Clone, Debug, rkyv::Serialize, rkyv::Deserialize, PartialEq, Eq)]
+#[rkyv(
+    compare(PartialEq),
+    derive(Debug),
+)]
 pub struct TxInner {
-    pub from: PublicKey,
-    pub to: PublicKey,
+    pub from: u64,
+    pub to: u64,
     pub value: u64,
     pub data: Vec<u8>,
-    pub id: (u64,u64)
+    pub seqnum: u64,
 }
 
 impl TxInner {
-    pub fn new(from: PublicKey, to: PublicKey, value: u64, data: Vec<u8>, id: (u64,u64)) -> Self {
+    pub fn new(from: u64, to: u64, value: u64, data: Vec<u8>, seqnum: u64) -> Self {
         Self {
             from,
             to,
             value,
             data,
-            id,
+            seqnum,
         }
     }
 }
 
 impl Transaction {
-    pub fn new(from: PublicKey, to: PublicKey, value: u64, data: Vec<u8>, id:(u64,u64)) -> Self {
-        let tx_inner = TxInner::new(from, to, value, data, id);
-        let encoded = bincode::serialize(&tx_inner).unwrap();
+    pub fn new(from: u64, to: u64, value: u64, data: Vec<u8>, seqnum: u64) -> Self {
+        let tx_inner = TxInner::new(from, to, value, data, seqnum);
+        let encoded = rkyv::to_bytes::<Error>(&tx_inner).unwrap();
 
-        Self(encoded)
+        Self(encoded.to_vec())
     }
 }
 
@@ -193,6 +198,8 @@ pub struct Start {
 
 #[cfg(test)]
 mod tests {
+    use rkyv::rancor;
+    use rkyv::util::AlignedVec;
     use super::*;
 
     #[test]
@@ -206,9 +213,12 @@ mod tests {
         let value = 123;
         let data = b"hello, world!".to_vec();
 
-        let tx = Transaction::new(from_pk, to_pk, value, data, (1, 2));
+        let tx = Transaction::new(0, 1, value, data, 1);
 
-        let _tx_inner: TxInner = bincode::deserialize(tx.as_ref()).unwrap();
+        //let tx_inner = rkyv::from_bytes::<TxInner,rancor::Error>(&tx.0).unwrap();
+        let tx_inner = unsafe { rkyv::access_unchecked::<ArchivedTxInner>(&tx.0) };
+
+        assert_eq!(tx_inner.value, value);
     }
 
     #[test]
@@ -222,7 +232,7 @@ mod tests {
         let value = 0;
         let data = vec![];
         let id = "123".to_string();
-        let tx = Transaction::new(from_pk, to_pk, value, data, (1, 2));
+        let tx = Transaction::new(0, 1, value, data, 1);
 
         println!("tx size: {}", tx.as_ref().len());
         println!("public key size: {}", std::mem::size_of::<PublicKey>());

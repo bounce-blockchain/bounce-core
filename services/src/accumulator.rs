@@ -9,7 +9,7 @@ use keccak_hash::keccak;
 use rayon::prelude::*;
 use rkyv::rancor;
 use rs_merkle::MerkleTree;
-use bounce_core::types::{Keccak256, Transaction, TxInner};
+use bounce_core::types::{ArchivedTxInner, Keccak256, Transaction, TxInner};
 use bls::min_pk::{PublicKey};
 use serde::{Deserialize};
 use services::db::MemoryDB;
@@ -47,11 +47,11 @@ fn generate_transactions(num: usize, wallet_id_seqnum_pair:&[(u64,u64)]) -> Vec<
         rng.fill(&mut data);
         let data = data.to_vec();
         let tx = Transaction::new(
-            PublicKey::default(),
-            PublicKey::default(),
+            wallet_id_seqnum_pair[i].0,
+            (wallet_id_seqnum_pair[i].0 + 1) % NUM_WALLETS as u64,
             rand::random_range(0..500),
             data,
-            (wallet_id_seqnum_pair[i].0, wallet_id_seqnum_pair[i].1),
+            wallet_id_seqnum_pair[i].1,
         );
         txs.push(tx);
     }
@@ -78,11 +78,11 @@ fn process_transaction(
     updates_producer: &crossbeam_channel::Sender<(Vec<u8>, Vec<u8>)>,
     tx_counter: &Arc<Mutex<TxCounter>>,
 ) {
-    let tx_inner: TxInner = bincode::deserialize(&transaction.0).unwrap();
-    let (wallet_id, seqnum) = tx_inner.id;
+    let tx_inner = unsafe { rkyv::access_unchecked::<ArchivedTxInner>(&transaction.0) };
 
     // Read wallet from trie
-    let key = wallet_id.to_be_bytes();
+    let wallet_id:u64 = tx_inner.from.into();
+    let seqnum:u64 = tx_inner.seqnum.into();
     // let wallet_encoded = {
     //     let read_trie = trie.read().unwrap();
     //     match read_trie.get(&key) {
@@ -90,7 +90,7 @@ fn process_transaction(
     //         _ => return,
     //     }
     // };
-    let wallet_encoded = db.get(&key).unwrap().unwrap();
+    let wallet_encoded = db.get(&wallet_id.to_be_bytes()).unwrap().unwrap();
 
     let wallet = unsafe { rkyv::access_unchecked::<ArchivedWallet>(&wallet_encoded) };
 
@@ -112,8 +112,8 @@ fn process_transaction(
 
     let encoded = rkyv::to_bytes::<rancor::Error>(&updated_wallet).unwrap();
 
-    if seen_txs.insert(tx_inner.id) {
-        updates_producer.send((key.to_vec(), encoded.to_vec())).unwrap();
+    if seen_txs.insert((wallet_id, seqnum)) {
+        updates_producer.send((wallet_id.to_be_bytes().to_vec(), encoded.to_vec())).unwrap();
         tx_counter.lock().unwrap().tx_success += 1;
     } else {
         tx_counter.lock().unwrap().tx_bad_seqnum += 1;
