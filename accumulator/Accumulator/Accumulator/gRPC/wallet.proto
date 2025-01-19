@@ -1,15 +1,19 @@
 syntax = "proto3";
 
 service WalletService {
-  rpc UpdateWallet(WalletUpdateRequest) returns (WalletUpdateResponse);
+  rpc UpdateWallets(WalletBatchUpdateRequest) returns (WalletBatchUpdateResponse);
 }
 
-message WalletUpdateRequest {
+message WalletUpdate {
   int64 walletId = 1;
   int64 amount = 2;
   int64 seqNum = 3;
 }
 
-message WalletUpdateResponse {
+message WalletBatchUpdateRequest {
+  repeated WalletUpdate updates = 1;
+}
+
+message WalletBatchUpdateResponse {
   bool success = 1;
 }

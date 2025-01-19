@@ -23,17 +23,44 @@ public class Transaction
 
 public class Program
 {
-    public static int NumTx = 10_000;
-    public static int NumWallets = 1_000;
-    
+    public static int NumTx = 100_000;
+    public static int NumWallets = 1_000_000;
+
     static readonly Dictionary<int, string> NodeIpMapping = new Dictionary<int, string>
     {
-        { 0, "192.168.1.10" },
-        { 1, "192.168.1.11" }
-        // { 2, "192.168.1.12" },
-        // { 3, "192.168.1.13" }
         // { 0, "127.0.0.1" },
         // { 1, "127.0.0.1" },
+        
+        { 0, "192.168.1.10" },
+        { 1, "192.168.1.11" },
+        { 2, "192.168.1.12" },
+        { 3, "192.168.1.13" },
+        { 4, "192.168.1.14" },
+        { 5, "192.168.1.15" },
+        { 6, "192.168.1.16" },
+        { 7, "192.168.1.17" },
+        { 8, "192.168.1.18" },
+        { 9, "192.168.1.19" },
+        { 10, "192.168.1.20" },
+        { 11, "192.168.1.21" },
+        { 12, "192.168.1.22" },
+        { 13, "192.168.1.23" },
+        { 14, "192.168.1.24" },
+        { 15, "192.168.1.25" },
+        { 16, "192.168.1.26" },
+        { 17, "192.168.1.27" },
+        { 18, "192.168.1.28" },
+        { 19, "192.168.1.29" },
+        { 20, "192.168.1.30" },
+        // { 21, "192.168.1.31" },
+        // { 22, "192.168.1.32" },
+        // { 23, "192.168.1.33" },
+        // { 24, "192.168.1.34" },
+        // { 25, "192.168.1.35" },
+        // { 26, "192.168.1.36" },
+        // { 27, "192.168.1.37" },
+        // { 28, "192.168.1.38" },
+        // { 29, "192.168.1.39" }
     };
 
     static async Task Main(string[] args)
@@ -47,7 +74,7 @@ public class Program
 
         int nodeId = int.Parse(args[0]);
         int totalPartitions = int.Parse(args[1]);
-        
+
         // Get IP address for the current node
         if (!NodeIpMapping.TryGetValue(nodeId, out var ipAddress))
         {
@@ -74,7 +101,7 @@ public class Program
 
         // Start gRPC server
         var grpcServer = StartGrpcServer(store, ipAddress, nodeId);
-        
+
 
         // Start transaction processing in the background
         _ = Task.Run(() =>
@@ -91,12 +118,15 @@ public class Program
             {
                 await Task.Delay(TimeSpan.FromMinutes(5)); // Checkpoint every 5 minutes
                 Console.WriteLine($"Node {nodeId}: Taking checkpoint...");
+                var stopwatch = Stopwatch.StartNew();
                 store.TakeFullCheckpointAsync(CheckpointType.FoldOver).GetAwaiter().GetResult();
-                Console.WriteLine($"Node {nodeId}: Checkpoint completed.");
+                stopwatch.Stop();
+                Console.WriteLine($"Node {nodeId}: Checkpoint completed in {stopwatch.ElapsedMilliseconds} ms.");
             }
         });
 
         // Keep the gRPC server running indefinitely
+        Console.WriteLine($"Node {nodeId}: Starting gRPC server...");
         await grpcServer.RunAsync();
     }
 
@@ -141,17 +171,19 @@ public class Program
         return transactions;
     }
 
-    static async Task ProcessTransactionsAsync(FasterKV<long, Wallet.Wallet> store, Transaction[] transactions, int nodeId, int totalPartitions)
+    static async Task ProcessTransactionsAsync(FasterKV<long, Wallet.Wallet> store, Transaction[] transactions,
+        int nodeId, int totalPartitions)
     {
         Console.WriteLine($"Node {nodeId}: Processing transactions...");
         var stopwatch = Stopwatch.StartNew();
 
         var transactionBatches = transactions.Chunk(Environment.ProcessorCount);
 
-        // Use Parallel.ForEachAsync for async transaction processing
         await Parallel.ForEachAsync(transactionBatches, async (batch, _) =>
         {
             using var session = store.NewSession(new WalletFunctions());
+            var nodeUpdates = new Dictionary<int, List<WalletUpdate>>();
+
             foreach (var tx in batch)
             {
                 int senderPartition = GetPartition(tx.From, totalPartitions);
@@ -159,7 +191,8 @@ public class Program
 
                 if (senderPartition == nodeId)
                 {
-                    if (session.Read(tx.From, out var senderWallet).Found && senderWallet.Balance >= tx.Value && senderWallet.SeqNum < tx.SeqNum)
+                    if (session.Read(tx.From, out var senderWallet).Found && senderWallet.Balance >= tx.Value &&
+                        senderWallet.SeqNum < tx.SeqNum)
                     {
                         senderWallet.Balance -= tx.Value;
                         senderWallet.SeqNum = tx.SeqNum;
@@ -174,18 +207,28 @@ public class Program
                                 session.Upsert(tx.To, receiverWallet);
                             }
                         }
-                        else if (NodeIpMapping.TryGetValue(receiverPartition, out var targetIp))
-                        {
-                            // Fire-and-forget the remote update
-                            await SendUpdateToNode(targetIp, receiverPartition, tx.To, tx.Value, tx.SeqNum);
-                        }
                         else
                         {
-                            Console.WriteLine($"No IP address found for node {receiverPartition}.");
+                            // Add the update to the batch for the target node
+                            if (!nodeUpdates.ContainsKey(receiverPartition))
+                            {
+                                nodeUpdates[receiverPartition] = new List<WalletUpdate>();
+                            }
+
+                            nodeUpdates[receiverPartition].Add(new WalletUpdate
+                            {
+                                WalletId = tx.To,
+                                Amount = tx.Value,
+                                SeqNum = tx.SeqNum
+                            });
                         }
                     }
                 }
             }
+
+            // Send batched updates to each node
+            var batchTasks = nodeUpdates.Select(kvp => SendBatchUpdateToNode(kvp.Key, kvp.Value));
+            await Task.WhenAll(batchTasks);
         });
 
         stopwatch.Stop();
@@ -197,8 +240,45 @@ public class Program
         return (int)(walletId % totalPartitions);
     }
 
-    static async Task SendUpdateToNode(string targetIp, int partition, long walletId, long amount, long seqNum)
+    // static async Task SendUpdateToNode(string targetIp, int partition, long walletId, long amount, long seqNum)
+    // {
+    //     try
+    //     {
+    //         var channel = GrpcChannel.ForAddress($"http://{targetIp}:{5000 + partition}", new GrpcChannelOptions
+    //         {
+    //             HttpHandler = new SocketsHttpHandler
+    //             {
+    //                 EnableMultipleHttp2Connections = true
+    //             }
+    //         });
+    //         var client = new WalletServiceClient(channel);
+    //
+    //         var response = await client.UpdateWalletAsync(new WalletUpdateRequest
+    //         {
+    //             WalletId = walletId,
+    //             Amount = amount,
+    //             SeqNum = seqNum
+    //         });
+    //
+    //         if (!response.Success)
+    //         {
+    //             Console.WriteLine($"Failed to update wallet {walletId} on node {partition} at {targetIp}.");
+    //         }
+    //     }
+    //     catch (Exception ex)
+    //     {
+    //         Console.WriteLine($"Error updating wallet {walletId} on node {partition} at {targetIp}: {ex.Message}");
+    //     }
+    // }
+
+    static async Task SendBatchUpdateToNode(int partition, List<WalletUpdate> updates)
     {
+        if (!NodeIpMapping.TryGetValue(partition, out var targetIp))
+        {
+            Console.WriteLine($"No IP address found for node {partition}.");
+            return;
+        }
+
         try
         {
             var channel = GrpcChannel.ForAddress($"http://{targetIp}:{5000 + partition}", new GrpcChannelOptions
@@ -208,23 +288,22 @@ public class Program
                     EnableMultipleHttp2Connections = true
                 }
             });
+
             var client = new WalletServiceClient(channel);
 
-            var response = await client.UpdateWalletAsync(new WalletUpdateRequest
+            var response = await client.UpdateWalletsAsync(new WalletBatchUpdateRequest
             {
-                WalletId = walletId,
-                Amount = amount,
-                SeqNum = seqNum
+                Updates = { updates }
             });
 
             if (!response.Success)
             {
-                Console.WriteLine($"Failed to update wallet {walletId} on node {partition} at {targetIp}.");
+                Console.WriteLine($"Batch update failed for node {partition} at {targetIp}.");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error updating wallet {walletId} on node {partition} at {targetIp}: {ex.Message}");
+            Console.WriteLine($"Error sending batch update to node {partition} at {targetIp}: {ex.Message}");
         }
     }
 
@@ -244,23 +323,19 @@ public class Program
                 webBuilder.Configure(app =>
                 {
                     app.UseRouting();
-                    app.UseEndpoints(endpoints =>
-                    {
-                        endpoints.MapGrpcService<WalletServiceImpl>();
-                    });
+                    app.UseEndpoints(endpoints => { endpoints.MapGrpcService<WalletServiceImpl>(); });
                 });
 
                 // Configure Kestrel to listen on the node's IP address and use HTTP/2
                 webBuilder.ConfigureKestrel(options =>
                 {
-                    options.Listen(System.Net.IPAddress.Parse(ipAddress), 5000 + nodeId, listenOptions =>
-                    {
-                        listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
-                    });
+                    options.Listen(System.Net.IPAddress.Parse(ipAddress), 5000 + nodeId,
+                        listenOptions =>
+                        {
+                            listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
+                        });
                 });
             })
             .Build();
     }
-
-
 }

@@ -13,17 +13,23 @@ public class WalletServiceImpl : WalletService.WalletServiceBase
         _store = store;
     }
 
-    public override Task<WalletUpdateResponse> UpdateWallet(WalletUpdateRequest request, ServerCallContext context)
+    public override Task<WalletBatchUpdateResponse> UpdateWallets(WalletBatchUpdateRequest request, ServerCallContext context)
     {
         using var session = _store.NewSession(new WalletFunctions());
-        if (session.Read(request.WalletId, out var wallet).Found)
+        foreach (var update in request.Updates)
         {
-            wallet.Balance += request.Amount;
-            wallet.SeqNum = request.SeqNum;
-            session.Upsert(request.WalletId, wallet);
-            return Task.FromResult(new WalletUpdateResponse { Success = true });
+            if (session.Read(update.WalletId, out var wallet).Found)
+            {
+                if (update.SeqNum > wallet.SeqNum)
+                {
+                    wallet.Balance += update.Amount;
+                    wallet.SeqNum = update.SeqNum;
+                    session.Upsert(update.WalletId, wallet);
+                }
+            }
         }
-        Console.WriteLine($"Failed to read wallet {request.WalletId}.");
-        return Task.FromResult(new WalletUpdateResponse { Success = false });
+
+        return Task.FromResult(new WalletBatchUpdateResponse { Success = true });
     }
 }
+
