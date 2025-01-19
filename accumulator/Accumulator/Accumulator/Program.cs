@@ -23,8 +23,8 @@ public class Transaction
 
 public class Program
 {
-    public static int NumTx = 100_000;
-    public static int NumWallets = 1_000_000;
+    public static int NumTx = 1_000_000;
+    public static int NumWallets = 10_000_000;
 
     static readonly Dictionary<int, string> NodeIpMapping = new Dictionary<int, string>
     {
@@ -100,15 +100,18 @@ public class Program
         InitializeWallets(store, nodeId, totalPartitions);
 
         // Start gRPC server
+        Console.WriteLine($"Node {nodeId}: Starting gRPC server...");
         var grpcServer = StartGrpcServer(store, ipAddress, nodeId);
 
+        // Wait for other nodes to start
+        Console.WriteLine($"Node {nodeId}: Waiting for other nodes to start...");
+        await Task.Delay(TimeSpan.FromSeconds(5));
 
         // Start transaction processing in the background
-        _ = Task.Run(() =>
+        _ = Task.Run(async () =>
         {
             var transactions = GenerateTransactions(NumTx, NumWallets);
-            Task.Delay(TimeSpan.FromSeconds(3)); // Wait for other servers to be ready start
-            ProcessTransactionsAsync(store, transactions, nodeId, totalPartitions);
+            await ProcessTransactionsAsync(store, transactions, nodeId, totalPartitions);
         });
 
         // Start periodic checkpointing
@@ -126,7 +129,6 @@ public class Program
         });
 
         // Keep the gRPC server running indefinitely
-        Console.WriteLine($"Node {nodeId}: Starting gRPC server...");
         await grpcServer.RunAsync();
     }
 
