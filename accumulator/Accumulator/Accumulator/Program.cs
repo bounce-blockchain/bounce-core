@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using Accumulator.gRPC;
 using Accumulator.Wallet;
 using FASTER.core;
@@ -105,7 +106,7 @@ public class Program
 
         // Wait for other nodes to start
         Console.WriteLine($"Node {nodeId}: Waiting for other nodes to start...");
-        await Task.Delay(TimeSpan.FromSeconds(5));
+        await Task.Delay(TimeSpan.FromSeconds(10));
 
         // Start transaction processing in the background
         _ = Task.Run(async () =>
@@ -181,10 +182,13 @@ public class Program
 
         var transactionBatches = transactions.Chunk(Environment.ProcessorCount);
 
+        // Shared node updates dictionary for merging at the end
+        var sharedNodeUpdates = new ConcurrentDictionary<int, List<WalletUpdate>>();
+
         await Parallel.ForEachAsync(transactionBatches, async (batch, _) =>
         {
             using var session = store.NewSession(new WalletFunctions());
-            var nodeUpdates = new Dictionary<int, List<WalletUpdate>>();
+            var localNodeUpdates = new Dictionary<int, List<WalletUpdate>>();
 
             foreach (var tx in batch)
             {
@@ -211,13 +215,14 @@ public class Program
                         }
                         else
                         {
-                            // Add the update to the batch for the target node
-                            if (!nodeUpdates.ContainsKey(receiverPartition))
+                            // Add the update to the thread-local batch for the target node
+                            if (!localNodeUpdates.TryGetValue(receiverPartition, out var updatesList))
                             {
-                                nodeUpdates[receiverPartition] = new List<WalletUpdate>();
+                                updatesList = new List<WalletUpdate>();
+                                localNodeUpdates[receiverPartition] = updatesList;
                             }
 
-                            nodeUpdates[receiverPartition].Add(new WalletUpdate
+                            updatesList.Add(new WalletUpdate
                             {
                                 WalletId = tx.To,
                                 Amount = tx.Value,
@@ -228,14 +233,32 @@ public class Program
                 }
             }
 
-            // Send batched updates to each node
-            var batchTasks = nodeUpdates.Select(kvp => SendBatchUpdateToNode(kvp.Key, kvp.Value));
-            await Task.WhenAll(batchTasks);
+            // Merge localNodeUpdates into sharedNodeUpdates
+            foreach (var kvp in localNodeUpdates)
+            {
+                sharedNodeUpdates.AddOrUpdate(
+                    kvp.Key,
+                    _ => kvp.Value, // If key does not exist, add it
+                    (_, existingList) =>
+                    {
+                        lock (existingList)
+                        {
+                            existingList.AddRange(kvp.Value); // Merge lists
+                        }
+
+                        return existingList;
+                    });
+            }
         });
+
+        // Send batched updates to each partition
+        var batchTasks = sharedNodeUpdates.Select(kvp => SendBatchUpdateToNode(kvp.Key, kvp.Value));
+        await Task.WhenAll(batchTasks);
 
         stopwatch.Stop();
         Console.WriteLine($"Node {nodeId}: Transaction processing took {stopwatch.ElapsedMilliseconds} ms.");
     }
+
 
     static int GetPartition(long walletId, int totalPartitions)
     {
@@ -275,6 +298,7 @@ public class Program
 
     static async Task SendBatchUpdateToNode(int partition, List<WalletUpdate> updates)
     {
+        Console.WriteLine($"Sending {updates.Count} updates to partition {partition}...");
         if (!NodeIpMapping.TryGetValue(partition, out var targetIp))
         {
             Console.WriteLine($"No IP address found for node {partition}.");
