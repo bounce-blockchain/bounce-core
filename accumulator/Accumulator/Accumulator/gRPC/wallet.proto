@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+service WalletService {
+  rpc UpdateWallet(WalletUpdateRequest) returns (WalletUpdateResponse);
+}
+
+message WalletUpdateRequest {
+  int64 walletId = 1;
+  int64 amount = 2;
+  int64 seqNum = 3;
+}
+
+message WalletUpdateResponse {
+  bool success = 1;
+}
