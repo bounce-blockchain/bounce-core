@@ -23,8 +23,19 @@ public class Transaction
 
 public class Program
 {
-    public static int NumTx = 10_000_000;
-    public static int NumWallets = 1_000_000;
+    public static int NumTx = 10_000;
+    public static int NumWallets = 1_000;
+    
+    static readonly Dictionary<int, string> NodeIpMapping = new Dictionary<int, string>
+    {
+        { 0, "192.168.1.10" },
+        { 1, "192.168.1.11" }
+        // { 2, "192.168.1.12" },
+        // { 3, "192.168.1.13" }
+        // { 0, "127.0.0.1" },
+        // { 1, "127.0.0.1" },
+    };
+
     static async Task Main(string[] args)
     {
         // Parse node ID and total partitions from command line arguments
@@ -36,6 +47,13 @@ public class Program
 
         int nodeId = int.Parse(args[0]);
         int totalPartitions = int.Parse(args[1]);
+        
+        // Get IP address for the current node
+        if (!NodeIpMapping.TryGetValue(nodeId, out var ipAddress))
+        {
+            Console.WriteLine($"No IP address found for node {nodeId}.");
+            return;
+        }
 
         // Configuration for FASTER store
         var log = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.log", preallocateFile: false);
@@ -55,14 +73,14 @@ public class Program
         InitializeWallets(store, nodeId, totalPartitions);
 
         // Start gRPC server
-        var grpcServer = StartGrpcServer(store, nodeId);
+        var grpcServer = StartGrpcServer(store, ipAddress, nodeId);
         
-        await Task.Delay(TimeSpan.FromSeconds(10)); // Wait for other servers to be ready start
 
         // Start transaction processing in the background
         _ = Task.Run(() =>
         {
             var transactions = GenerateTransactions(NumTx, NumWallets);
+            Task.Delay(TimeSpan.FromSeconds(3)); // Wait for other servers to be ready start
             ProcessTransactionsAsync(store, transactions, nodeId, totalPartitions);
         });
 
@@ -156,10 +174,14 @@ public class Program
                                 session.Upsert(tx.To, receiverWallet);
                             }
                         }
+                        else if (NodeIpMapping.TryGetValue(receiverPartition, out var targetIp))
+                        {
+                            // Fire-and-forget the remote update
+                            await SendUpdateToNode(targetIp, receiverPartition, tx.To, tx.Value, tx.SeqNum);
+                        }
                         else
                         {
-                            // Fire-and-forget the remote update asynchronously
-                            await SendUpdateToNode(receiverPartition, tx.To, tx.Value, tx.SeqNum);
+                            Console.WriteLine($"No IP address found for node {receiverPartition}.");
                         }
                     }
                 }
@@ -170,17 +192,16 @@ public class Program
         Console.WriteLine($"Node {nodeId}: Transaction processing took {stopwatch.ElapsedMilliseconds} ms.");
     }
 
-
     static int GetPartition(long walletId, int totalPartitions)
     {
         return (int)(walletId % totalPartitions);
     }
 
-    static async Task SendUpdateToNode(int partition, long walletId, long amount, long seqNum)
+    static async Task SendUpdateToNode(string targetIp, int partition, long walletId, long amount, long seqNum)
     {
         try
         {
-            var channel = GrpcChannel.ForAddress($"http://localhost:{5000 + partition}", new GrpcChannelOptions
+            var channel = GrpcChannel.ForAddress($"http://{targetIp}:{5000 + partition}", new GrpcChannelOptions
             {
                 HttpHandler = new SocketsHttpHandler
                 {
@@ -198,17 +219,17 @@ public class Program
 
             if (!response.Success)
             {
-                Console.WriteLine($"Failed to update wallet {walletId} on node {partition}.");
+                Console.WriteLine($"Failed to update wallet {walletId} on node {partition} at {targetIp}.");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error updating wallet {walletId} on node {partition}: {ex.Message}");
+            Console.WriteLine($"Error updating wallet {walletId} on node {partition} at {targetIp}: {ex.Message}");
         }
     }
 
 
-    static IHost StartGrpcServer(FasterKV<long, Wallet.Wallet> store, int nodeId)
+    static IHost StartGrpcServer(FasterKV<long, Wallet.Wallet> store, string ipAddress, int nodeId)
     {
         return Host.CreateDefaultBuilder()
             .ConfigureWebHostDefaults(webBuilder =>
@@ -229,9 +250,10 @@ public class Program
                     });
                 });
 
+                // Configure Kestrel to listen on the node's IP address and use HTTP/2
                 webBuilder.ConfigureKestrel(options =>
                 {
-                    options.ListenLocalhost(5000 + nodeId, listenOptions =>
+                    options.Listen(System.Net.IPAddress.Parse(ipAddress), 5000 + nodeId, listenOptions =>
                     {
                         listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
                     });
@@ -239,5 +261,6 @@ public class Program
             })
             .Build();
     }
+
 
 }
