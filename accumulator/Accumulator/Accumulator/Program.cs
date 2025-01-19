@@ -23,6 +23,8 @@ public class Transaction
 
 public class Program
 {
+    public static int NumTx = 10_000_000;
+    public static int NumWallets = 1_000_000;
     static async Task Main(string[] args)
     {
         // Parse node ID and total partitions from command line arguments
@@ -60,7 +62,7 @@ public class Program
         // Start transaction processing in the background
         _ = Task.Run(() =>
         {
-            var transactions = GenerateTransactions(10_000_000, 1_000_000);
+            var transactions = GenerateTransactions(NumTx, NumWallets);
             ProcessTransactionsAsync(store, transactions, nodeId, totalPartitions);
         });
 
@@ -83,7 +85,7 @@ public class Program
     static void InitializeWallets(FasterKV<long, Wallet.Wallet> store, int nodeId, int totalPartitions)
     {
         Console.WriteLine($"Initializing wallets for node {nodeId}...");
-        long totalWallets = 100_000; // Total wallets across all partitions
+        long totalWallets = NumWallets; // Total wallets across all partitions
         var initTasks = Enumerable.Range(0, Environment.ProcessorCount).Select(thread =>
         {
             return Task.Run(() =>

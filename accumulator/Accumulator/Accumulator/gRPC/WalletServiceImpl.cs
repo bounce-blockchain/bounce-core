@@ -23,7 +23,7 @@ public class WalletServiceImpl : WalletService.WalletServiceBase
             session.Upsert(request.WalletId, wallet);
             return Task.FromResult(new WalletUpdateResponse { Success = true });
         }
-
+        Console.WriteLine($"Failed to read wallet {request.WalletId}.");
         return Task.FromResult(new WalletUpdateResponse { Success = false });
     }
 }
