@@ -24,8 +24,8 @@ public class Transaction
 
 public class Program
 {
-    public static int NumTx = 1_000_000;
-    public static int NumWallets = 10_000_000;
+    public static int NumTx = 10_000_000;
+    public static int NumWallets = 1_000_000_000;
 
     static readonly Dictionary<int, string> NodeIpMapping = new Dictionary<int, string>
     {
@@ -87,7 +87,7 @@ public class Program
         var log = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.log", preallocateFile: false);
         var objLog = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.obj.log", preallocateFile: false);
         var store = new FasterKV<long, Wallet.Wallet>(
-            size: 1L << 25,
+            size: 1L << 30,
             logSettings: new LogSettings
             {
                 LogDevice = log,
@@ -106,7 +106,7 @@ public class Program
 
         // Wait for other nodes to start
         Console.WriteLine($"Node {nodeId}: Waiting for other nodes to start...");
-        await Task.Delay(TimeSpan.FromSeconds(10));
+        await Task.Delay(TimeSpan.FromSeconds(20));
 
         // Start transaction processing in the background
         _ = Task.Run(async () =>
