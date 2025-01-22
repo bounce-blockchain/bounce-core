@@ -106,7 +106,7 @@ public class Program
 
         // Wait for other nodes to start
         Console.WriteLine($"Node {nodeId}: Waiting for other nodes to start...");
-        await Task.Delay(TimeSpan.FromSeconds(20));
+        await Task.Delay(TimeSpan.FromSeconds(45));
 
         // Start transaction processing in the background
         _ = Task.Run(async () =>
