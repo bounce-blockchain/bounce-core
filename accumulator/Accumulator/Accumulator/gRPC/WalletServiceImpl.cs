@@ -15,6 +15,7 @@ public class WalletServiceImpl : WalletService.WalletServiceBase
 
     public override Task<WalletBatchUpdateResponse> UpdateWallets(WalletBatchUpdateRequest request, ServerCallContext context)
     {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         using var session = _store.NewSession(new WalletFunctions());
         foreach (var update in request.Updates)
         {
@@ -28,6 +29,8 @@ public class WalletServiceImpl : WalletService.WalletServiceBase
                 }
             }
         }
+        stopwatch.Stop();
+        Console.WriteLine($"Processed {request.Updates.Count} updates in {stopwatch.ElapsedMilliseconds}ms.");
 
         return Task.FromResult(new WalletBatchUpdateResponse { Success = true });
     }

@@ -185,6 +185,7 @@ public class Program
         // Shared node updates dictionary for merging at the end
         var sharedNodeUpdates = new ConcurrentDictionary<int, List<WalletUpdate>>();
 
+        var local_processing_start = Stopwatch.StartNew();
         await Parallel.ForEachAsync(transactionBatches, async (batch, _) =>
         {
             using var session = store.NewSession(new WalletFunctions());
@@ -250,10 +251,15 @@ public class Program
                     });
             }
         });
+        local_processing_start.Stop();
+        Console.WriteLine($"Node {nodeId}: Local processing took {local_processing_start.ElapsedMilliseconds} ms.");
 
         // Send batched updates to each partition
+        var sending_updates_start = Stopwatch.StartNew();
         var batchTasks = sharedNodeUpdates.Select(kvp => SendBatchUpdateToNode(kvp.Key, kvp.Value));
         await Task.WhenAll(batchTasks);
+        sending_updates_start.Stop();
+        Console.WriteLine($"Node {nodeId}: Sending updates took {sending_updates_start.ElapsedMilliseconds} ms.");
 
         stopwatch.Stop();
         Console.WriteLine($"Node {nodeId}: Transaction processing took {stopwatch.ElapsedMilliseconds} ms.");
