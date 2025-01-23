@@ -25,7 +25,7 @@ public class Transaction
 public class Program
 {
     public static int NumTx = 10_000_000;
-    public static int NumWallets = 1_000_000_000;
+    public static int NumWallets = 10_000_000;
 
     static readonly Dictionary<int, string> NodeIpMapping = new Dictionary<int, string>
     {
@@ -102,11 +102,11 @@ public class Program
 
         // Start gRPC server
         Console.WriteLine($"Node {nodeId}: Starting gRPC server...");
-        var grpcServer = StartGrpcServer(store, ipAddress, nodeId);
+        var grpcServer = StartGrpcServer(store, ipAddress);
 
         // Wait for other nodes to start
         Console.WriteLine($"Node {nodeId}: Waiting for other nodes to start...");
-        await Task.Delay(TimeSpan.FromSeconds(45));
+        await Task.Delay(TimeSpan.FromSeconds(20));
 
         // Start transaction processing in the background
         _ = Task.Run(async () =>
@@ -264,8 +264,7 @@ public class Program
         stopwatch.Stop();
         Console.WriteLine($"Node {nodeId}: Transaction processing took {stopwatch.ElapsedMilliseconds} ms.");
     }
-
-
+    
     static int GetPartition(long walletId, int totalPartitions)
     {
         return (int)(walletId % totalPartitions);
@@ -313,7 +312,7 @@ public class Program
 
         try
         {
-            var channel = GrpcChannel.ForAddress($"http://{targetIp}:{5000 + partition}", new GrpcChannelOptions
+            var channel = GrpcChannel.ForAddress($"http://{targetIp}:{5000}", new GrpcChannelOptions
             {
                 HttpHandler = new SocketsHttpHandler
                 {
@@ -340,7 +339,7 @@ public class Program
     }
 
 
-    static IHost StartGrpcServer(FasterKV<long, Wallet.Wallet> store, string ipAddress, int nodeId)
+    static IHost StartGrpcServer(FasterKV<long, Wallet.Wallet> store, string ipAddress)
     {
         return Host.CreateDefaultBuilder()
             .ConfigureWebHostDefaults(webBuilder =>
@@ -361,7 +360,7 @@ public class Program
                 // Configure Kestrel to listen on the node's IP address and use HTTP/2
                 webBuilder.ConfigureKestrel(options =>
                 {
-                    options.Listen(System.Net.IPAddress.Parse(ipAddress), 5000 + nodeId,
+                    options.Listen(System.Net.IPAddress.Parse(ipAddress), 5000,
                         listenOptions =>
                         {
                             listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
