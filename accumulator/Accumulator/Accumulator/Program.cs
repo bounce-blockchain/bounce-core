@@ -52,7 +52,7 @@ public class Program
         { 17, "192.168.1.27" },
         { 18, "192.168.1.28" },
         { 19, "192.168.1.29" },
-        { 20, "192.168.1.30" },
+        // { 20, "192.168.1.30" },
         // { 21, "192.168.1.31" },
         // { 22, "192.168.1.32" },
         // { 23, "192.168.1.33" },
@@ -84,15 +84,15 @@ public class Program
         }
 
         // Configuration for FASTER store
-        var log = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.log", preallocateFile: false);
-        var objLog = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.obj.log", preallocateFile: false);
+        //var log = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.log", preallocateFile: false);
+        //var objLog = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.obj.log", preallocateFile: false);
         var store = new FasterKV<long, Wallet.Wallet>(
             size: 1L << 30,
             logSettings: new LogSettings
             {
-                LogDevice = log,
-                ObjectLogDevice = objLog,
-                MutableFraction = 0.1,
+                LogDevice = new NullDevice(),
+                ObjectLogDevice = new NullDevice(),
+                MutableFraction = 0.9,
                 PageSizeBits = 14,
                 MemorySizeBits = 25
             });
