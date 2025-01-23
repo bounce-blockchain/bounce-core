@@ -25,7 +25,7 @@ public class Transaction
 public class Program
 {
     public static int NumTx = 10_000_000;
-    public static int NumWallets = 1_000_000_000;
+    public static int NumWallets = 10_000_000;
 
     static readonly Dictionary<int, string> NodeIpMapping = new Dictionary<int, string>
     {
@@ -103,6 +103,7 @@ public class Program
         // Start gRPC server
         Console.WriteLine($"Node {nodeId}: Starting gRPC server...");
         var grpcServer = StartGrpcServer(store, ipAddress);
+        Task.WaitAll(grpcServer.StartAsync(),Task.Delay(TimeSpan.FromSeconds(20)));
 
         // Wait for other nodes to start
         Console.WriteLine($"Node {nodeId}: Waiting for other nodes to start...");
