@@ -103,7 +103,6 @@ public class Program
         // Start gRPC server
         Console.WriteLine($"Node {nodeId}: Starting gRPC server...");
         var grpcServer = StartGrpcServer(store, ipAddress);
-        Task.WaitAll(grpcServer.StartAsync(),Task.Delay(TimeSpan.FromSeconds(20)));
 
         // Wait for other nodes to start
         Console.WriteLine($"Node {nodeId}: Waiting for other nodes to start...");
