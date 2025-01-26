@@ -1,7 +1,14 @@
 syntax = "proto3";
 
 service WalletService {
+  rpc Ready(ReadyRequest) returns (ReadyResponse);
   rpc UpdateWallets(WalletBatchUpdateRequest) returns (WalletBatchUpdateResponse);
+}
+
+message ReadyRequest {}
+
+message ReadyResponse {
+  bool ready = 1;
 }
 
 message WalletUpdate {
@@ -16,4 +23,4 @@ message WalletBatchUpdateRequest {
 
 message WalletBatchUpdateResponse {
   bool success = 1;
-}
+} 

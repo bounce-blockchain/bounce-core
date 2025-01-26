@@ -103,10 +103,9 @@ public class Program
         // Start gRPC server
         Console.WriteLine($"Node {nodeId}: Starting gRPC server...");
         var grpcServer = StartGrpcServer(store, ipAddress);
-
-        // Wait for other nodes to start
-        Console.WriteLine($"Node {nodeId}: Waiting for other nodes to start...");
-        await Task.Delay(TimeSpan.FromSeconds(20));
+        
+        // Wait for all nodes to be ready
+        await WaitForAllNodesReady(nodeId, totalPartitions);
 
         // Start transaction processing in the background
         _ = Task.Run(async () =>
@@ -338,6 +337,70 @@ public class Program
         }
     }
 
+    static async Task WaitForAllNodesReady(int nodeId, int totalPartitions)
+    {
+        Console.WriteLine($"Node {nodeId}: Waiting for all nodes to be ready...");
+    
+        var unresponsiveNodes = Enumerable.Range(0, totalPartitions)
+            .Where(id => id != nodeId)
+            .ToList();
+
+        const int maxRetries = 15; // Maximum retries
+        const int baseDelayMs = 100; // Base delay for exponential backoff
+        int retryCount = 0;
+
+        while (unresponsiveNodes.Count > 0)
+        {
+            retryCount++;
+            Console.WriteLine($"Node {nodeId}: Attempt {retryCount}, contacting {unresponsiveNodes.Count} unresponsive nodes...");
+
+            // Check readiness for remaining unresponsive nodes
+            var tasks = unresponsiveNodes.Select(async otherNodeId =>
+            {
+                if (!NodeIpMapping.TryGetValue(otherNodeId, out var targetIp))
+                {
+                    Console.WriteLine($"Node {nodeId}: No IP address found for node {otherNodeId}.");
+                    return false;
+                }
+
+                return await IsNodeReady(targetIp, otherNodeId);
+            });
+
+            var results = await Task.WhenAll(tasks);
+
+            // Remove responsive nodes from the unresponsive list
+            unresponsiveNodes = unresponsiveNodes
+                .Where((nodeId, index) => !results[index])
+                .ToList();
+
+            if (unresponsiveNodes.Count > 0)
+            {
+                Console.WriteLine($"Node {nodeId}: {unresponsiveNodes.Count} nodes still unresponsive. Retrying...");
+
+                // Wait before retrying (exponential backoff with a cap)
+                await Task.Delay(Math.Min(baseDelayMs * (1 << retryCount), 5000)); // Cap at 5 seconds
+            }
+        }
+
+        Console.WriteLine($"Node {nodeId}: All nodes are ready.");
+    }
+    
+    static async Task<bool> IsNodeReady(string targetIp, int nodeId)
+    {
+        try
+        {
+            var channel = GrpcChannel.ForAddress($"http://{targetIp}:{5000}");
+            var client = new WalletServiceClient(channel);
+
+            var response = await client.ReadyAsync(new ReadyRequest());
+            return response.Ready;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error checking readiness of node {nodeId} at {targetIp}: {ex.Message}");
+            return false;
+        }
+    }
 
     static IHost StartGrpcServer(FasterKV<long, Wallet.Wallet> store, string ipAddress)
     {

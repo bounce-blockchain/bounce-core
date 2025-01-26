@@ -12,6 +12,11 @@ public class WalletServiceImpl : WalletService.WalletServiceBase
     {
         _store = store;
     }
+    
+    public override Task<ReadyResponse> Ready(ReadyRequest request, ServerCallContext context)
+    {
+        return Task.FromResult(new ReadyResponse { Ready = true });
+    }
 
     public override Task<WalletBatchUpdateResponse> UpdateWallets(WalletBatchUpdateRequest request, ServerCallContext context)
     {
