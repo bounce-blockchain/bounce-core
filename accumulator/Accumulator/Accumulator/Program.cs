@@ -24,7 +24,7 @@ public class Transaction
 
 public class Program
 {
-    public static int NumTx = 1_000_000;
+    public static int NumTx = 10_000_000;
     public static int NumWallets = 100_000_000;
 
     static readonly Dictionary<int, string> NodeIpMapping = new Dictionary<int, string>
