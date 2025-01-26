@@ -84,17 +84,17 @@ public class Program
         }
 
         // Configuration for FASTER store
-        //var log = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.log", preallocateFile: false);
-        //var objLog = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.obj.log", preallocateFile: false);
+        var log = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.log", preallocateFile: false);
+        var objLog = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.obj.log", preallocateFile: false);
         var store = new FasterKV<long, Wallet.Wallet>(
             size: 1L << 30,
             logSettings: new LogSettings
             {
-                LogDevice = new NullDevice(),
-                ObjectLogDevice = new NullDevice(),
+                LogDevice = log,
+                ObjectLogDevice = objLog,
                 MutableFraction = 1,
                 PageSizeBits = 14,
-                MemorySizeBits = 25
+                MemorySizeBits = 35 // 32 GB memory
             });
 
         // Initialize wallets for this node's partition
