@@ -102,7 +102,7 @@ public class Program
 
         // Start gRPC server
         Console.WriteLine($"Node {nodeId}: Starting gRPC server...");
-        var grpcServer = StartGrpcServer(store, ipAddress);
+        var grpcServer = StartGrpcServer(store, ipAddress).RunAsync();
         
         // Wait for all nodes to be ready
         await WaitForAllNodesReady(nodeId, totalPartitions);
@@ -129,7 +129,7 @@ public class Program
         });
 
         // Keep the gRPC server running indefinitely
-        await grpcServer.RunAsync();
+        await grpcServer;
     }
 
     static void InitializeWallets(FasterKV<long, Wallet.Wallet> store, int nodeId, int totalPartitions)
@@ -351,6 +351,11 @@ public class Program
 
         while (unresponsiveNodes.Count > 0)
         {
+            if (retryCount >= maxRetries)
+            {
+                Console.WriteLine($"Node {nodeId}: Timed out waiting for nodes {string.Join(", ", unresponsiveNodes)} to be ready.");
+                return;
+            }
             retryCount++;
             Console.WriteLine($"Node {nodeId}: Attempt {retryCount}, contacting {unresponsiveNodes.Count} unresponsive nodes...");
 
