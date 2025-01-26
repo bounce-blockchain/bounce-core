@@ -175,10 +175,10 @@ public class Program
     static async Task ProcessTransactionsAsync(FasterKV<long, Wallet.Wallet> store, Transaction[] transactions,
         int nodeId, int totalPartitions)
     {
-        Console.WriteLine($"Node {nodeId}: Processing {transactions.Length} transactions with {Environment.ProcessorCount} threads...");
+        Console.WriteLine($"Node {nodeId}: Processing {transactions.Length} transactions with {1} threads...");
         var stopwatch = Stopwatch.StartNew();
 
-        var transactionBatches = transactions.Chunk(Environment.ProcessorCount);
+        var transactionBatches = transactions.Chunk(1);
 
         // Shared node updates dictionary for merging at the end
         var sharedNodeUpdates = new ConcurrentDictionary<int, List<WalletUpdate>>();
