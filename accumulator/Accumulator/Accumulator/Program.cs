@@ -25,7 +25,7 @@ public class Transaction
 public class Program
 {
     public static int NumTx = 10_000_000;
-    public static int NumWallets = 10_000_000;
+    public static int NumWallets = 100_000_000;
 
     static readonly Dictionary<int, string> NodeIpMapping = new Dictionary<int, string>
     {
@@ -340,7 +340,7 @@ public class Program
     static async Task WaitForAllNodesReady(int nodeId, int totalPartitions)
     {
         Console.WriteLine($"Node {nodeId}: Waiting for all nodes to be ready...");
-        await Task.Delay(1000);
+        await Task.Delay(5000);
     
         var unresponsiveNodes = Enumerable.Range(0, totalPartitions)
             .Where(id => id != nodeId)
