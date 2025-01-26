@@ -24,7 +24,7 @@ public class Transaction
 
 public class Program
 {
-    public static int NumTx = 1_000;
+    public static int NumTx = 1_000_000;
     public static int NumWallets = 10_000_000;
 
     static readonly Dictionary<int, string> NodeIpMapping = new Dictionary<int, string>
@@ -158,19 +158,7 @@ public class Program
         Console.WriteLine("Generating transactions...");
         var random = new Random();
         var transactions = new Transaction[totalTransactions];
-        // Parallel.For(0, totalTransactions, i =>
-        // {
-        //     transactions[i] = new Transaction
-        //     {
-        //         From = random.Next(0, totalWallets),
-        //         To = random.Next(0, totalWallets),
-        //         Value = random.Next(1, 500),
-        //         Data = new byte[256],
-        //         SeqNum = 1
-        //     };
-        // });
-        
-        // non parallel version
+
         for (int i = 0; i < totalTransactions; i++)
         {
             transactions[i] = new Transaction
@@ -189,10 +177,10 @@ public class Program
     static async Task ProcessTransactionsAsync(FasterKV<long, Wallet.Wallet> store, Transaction[] transactions,
         int nodeId, int totalPartitions)
     {
-        Console.WriteLine($"Node {nodeId}: Processing {transactions.Length} transactions with {1} threads...");
+        Console.WriteLine($"Node {nodeId}: Processing {transactions.Length} transactions with {Environment.ProcessorCount} threads...");
         var stopwatch = Stopwatch.StartNew();
 
-        var transactionBatches = transactions.Chunk(1);
+        var transactionBatches = transactions.Chunk(transactions.Length / Environment.ProcessorCount);
 
         // Shared node updates dictionary for merging at the end
         var sharedNodeUpdates = new ConcurrentDictionary<int, List<WalletUpdate>>();
