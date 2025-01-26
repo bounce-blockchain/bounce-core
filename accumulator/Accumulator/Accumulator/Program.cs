@@ -135,22 +135,27 @@ public class Program
     static void InitializeWallets(FasterKV<long, Wallet.Wallet> store, int nodeId, int totalPartitions)
     {
         Console.WriteLine($"Initializing wallets for node {nodeId}...");
+        int counter = 0;
         var initTasks = Enumerable.Range(0, Environment.ProcessorCount).Select(thread =>
         {
             return Task.Run(() =>
             {
+                int localCounter = 0;
                 using var session = store.NewSession(new WalletFunctions());
                 for (long i = thread; i < NumWallets; i += Environment.ProcessorCount)
                 {
                     if (GetPartition(i, totalPartitions) == nodeId)
                     {
                         session.Upsert(i, new Wallet.Wallet { Balance = 1000, SeqNum = 0 });
+                        localCounter++;
                     }
                 }
+                Interlocked.Add(ref counter, localCounter);
             });
         });
         Task.WaitAll(initTasks.ToArray());
         Console.WriteLine($"Node {nodeId}: Wallet initialization complete.");
+        Console.WriteLine($"Node {nodeId}: Initialized {counter} wallets.");
     }
 
     static Transaction[] GenerateTransactions(int totalTransactions, int totalWallets)
