@@ -340,6 +340,7 @@ public class Program
     static async Task WaitForAllNodesReady(int nodeId, int totalPartitions)
     {
         Console.WriteLine($"Node {nodeId}: Waiting for all nodes to be ready...");
+        await Task.Delay(1000);
     
         var unresponsiveNodes = Enumerable.Range(0, totalPartitions)
             .Where(id => id != nodeId)
