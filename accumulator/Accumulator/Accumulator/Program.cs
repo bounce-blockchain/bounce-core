@@ -25,7 +25,7 @@ public class Transaction
 public class Program
 {
     public static int NumTx = 10_000_000;
-    public static int NumWallets = 100_000_000;
+    public static int NumWallets = 20;
 
     static readonly Dictionary<int, string> NodeIpMapping = new Dictionary<int, string>
     {
@@ -135,13 +135,12 @@ public class Program
     static void InitializeWallets(FasterKV<long, Wallet.Wallet> store, int nodeId, int totalPartitions)
     {
         Console.WriteLine($"Initializing wallets for node {nodeId}...");
-        long totalWallets = NumWallets; // Total wallets across all partitions
         var initTasks = Enumerable.Range(0, Environment.ProcessorCount).Select(thread =>
         {
             return Task.Run(() =>
             {
                 using var session = store.NewSession(new WalletFunctions());
-                for (long i = thread; i < totalWallets; i += Environment.ProcessorCount)
+                for (long i = thread; i < NumWallets; i += Environment.ProcessorCount)
                 {
                     if (GetPartition(i, totalPartitions) == nodeId)
                     {
@@ -165,7 +164,7 @@ public class Program
             {
                 From = random.Next(0, totalWallets),
                 To = random.Next(0, totalWallets),
-                Value = random.Next(1, 1000),
+                Value = random.Next(1, 500),
                 Data = new byte[256],
                 SeqNum = 1
             };
@@ -176,7 +175,7 @@ public class Program
     static async Task ProcessTransactionsAsync(FasterKV<long, Wallet.Wallet> store, Transaction[] transactions,
         int nodeId, int totalPartitions)
     {
-        Console.WriteLine($"Node {nodeId}: Processing transactions...");
+        Console.WriteLine($"Node {nodeId}: Processing {transactions.Length} transactions with {Environment.ProcessorCount} threads...");
         var stopwatch = Stopwatch.StartNew();
 
         var transactionBatches = transactions.Chunk(Environment.ProcessorCount);
@@ -228,6 +227,16 @@ public class Program
                                 Amount = tx.Value,
                                 SeqNum = tx.SeqNum
                             });
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Node {nodeId}: Invalid transaction from {tx.From} to {tx.To}.");
+                        var found = session.Read(tx.From, out var _);
+                        Console.WriteLine($"Found in the store? {found.Found}");
+                        if (found.Found)
+                        {
+                            Console.WriteLine($"Balance: {senderWallet.Balance}, tx value: {tx.Value}, seq num: {senderWallet.SeqNum}, tx seq num: {tx.SeqNum}");
                         }
                     }
                 }
