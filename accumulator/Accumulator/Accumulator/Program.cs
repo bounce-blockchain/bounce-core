@@ -158,7 +158,20 @@ public class Program
         Console.WriteLine("Generating transactions...");
         var random = new Random();
         var transactions = new Transaction[totalTransactions];
-        Parallel.For(0, totalTransactions, i =>
+        // Parallel.For(0, totalTransactions, i =>
+        // {
+        //     transactions[i] = new Transaction
+        //     {
+        //         From = random.Next(0, totalWallets),
+        //         To = random.Next(0, totalWallets),
+        //         Value = random.Next(1, 500),
+        //         Data = new byte[256],
+        //         SeqNum = 1
+        //     };
+        // });
+        
+        // non parallel version
+        for (int i = 0; i < totalTransactions; i++)
         {
             transactions[i] = new Transaction
             {
@@ -168,7 +181,8 @@ public class Program
                 Data = new byte[256],
                 SeqNum = 1
             };
-        });
+        }
+        Console.WriteLine("Transactions generated.");
         return transactions;
     }
 
