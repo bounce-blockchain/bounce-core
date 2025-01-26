@@ -92,7 +92,7 @@ public class Program
             {
                 LogDevice = new NullDevice(),
                 ObjectLogDevice = new NullDevice(),
-                MutableFraction = 0.9,
+                MutableFraction = 1,
                 PageSizeBits = 14,
                 MemorySizeBits = 25
             });
