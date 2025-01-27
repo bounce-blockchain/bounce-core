@@ -171,7 +171,7 @@ public class Program
                 From = random.Next(0, totalWallets),
                 To = random.Next(0, totalWallets),
                 Value = random.Next(1, 500),
-                Data = new byte[256],
+                Data = new byte[360],
                 SeqNum = 1
             };
         }
