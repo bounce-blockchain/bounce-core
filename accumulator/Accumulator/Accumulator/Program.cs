@@ -87,7 +87,7 @@ public class Program
         var log = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.log", preallocateFile: false);
         var objLog = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.obj.log", preallocateFile: false);
         var store = new FasterKV<long, Wallet.Wallet>(
-            size: 1L << 30,
+            size: NumWallets*20,
             logSettings: new LogSettings
             {
                 LogDevice = log,
