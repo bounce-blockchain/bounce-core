@@ -24,8 +24,8 @@ public class Transaction
 
 public class Program
 {
-    public static int NumTx = 10_000_000;
-    public static int NumWallets = 1_000_000_000;
+    public static int NumTx = 8_000_000;
+    public static int NumWallets = 10_000_000;
 
     static readonly Dictionary<int, string> NodeIpMapping = new Dictionary<int, string>
     {
@@ -236,16 +236,16 @@ public class Program
                             });
                         }
                     }
-                    // else
-                    // {
-                    //     Console.WriteLine($"Node {nodeId}: Invalid transaction from {tx.From} to {tx.To}.");
-                    //     var found = session.Read(tx.From, out var _);
-                    //     Console.WriteLine($"Found in the store? {found.Found}");
-                    //     if (found.Found)
-                    //     {
-                    //         Console.WriteLine($"Balance: {senderWallet.Balance}, tx value: {tx.Value}, seq num: {senderWallet.SeqNum}, tx seq num: {tx.SeqNum}");
-                    //     }
-                    // }
+                    else
+                    {
+                        Console.WriteLine($"Node {nodeId}: Invalid transaction from {tx.From} to {tx.To}.");
+                        var found = session.Read(tx.From, out var _);
+                        Console.WriteLine($"Found in the store? {found.Found}");
+                        if (found.Found)
+                        {
+                            Console.WriteLine($"Balance: {senderWallet.Balance}, tx value: {tx.Value}, seq num: {senderWallet.SeqNum}, tx seq num: {tx.SeqNum}");
+                        }
+                    }
                 }
             }
 
