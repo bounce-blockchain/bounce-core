@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Numerics;
 using Accumulator.gRPC;
 using Accumulator.Wallet;
 using FASTER.core;
@@ -87,7 +88,8 @@ public class Program
         var log = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.log", preallocateFile: false);
         var objLog = Devices.CreateLogDevice($"Logs/hlog-{nodeId}.obj.log", preallocateFile: false);
         var store = new FasterKV<long, Wallet.Wallet>(
-            size: NumWallets*20,
+            //size is the least power of two larger than the number of wallets
+            size: BitOperations.RoundUpToPowerOf2((uint)NumWallets),
             logSettings: new LogSettings
             {
                 LogDevice = log,
