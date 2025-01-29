@@ -334,7 +334,9 @@ public class Program
                 HttpHandler = new SocketsHttpHandler
                 {
                     EnableMultipleHttp2Connections = true
-                }
+                },
+                MaxReceiveMessageSize = 1024 * 1024 * 1024, // 1 GB
+                MaxSendMessageSize = 1024 * 1024 * 1024 // 1 GB
             });
 
             var client = new WalletServiceClient(channel);
@@ -433,7 +435,11 @@ public class Program
             {
                 webBuilder.ConfigureServices(services =>
                 {
-                    services.AddGrpc();
+                    services.AddGrpc(options =>
+                    {
+                        options.MaxReceiveMessageSize = 1024 * 1024 * 1024; // 1 GB
+                        options.MaxSendMessageSize = 1024 * 1024 * 1024; // 1 GB
+                    });
                     services.AddSingleton(store);
                     services.AddSingleton<WalletServiceImpl>();
                 });
