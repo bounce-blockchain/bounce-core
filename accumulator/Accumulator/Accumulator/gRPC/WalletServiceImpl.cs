@@ -22,14 +22,25 @@ public class WalletServiceImpl : WalletService.WalletServiceBase
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         using var session = _store.NewSession(new WalletFunctions());
-        foreach (var update in request.Updates)
+        var isUndo = request.IsUndo;
+        if (isUndo)
         {
-            if (session.Read(update.WalletId, out var wallet).Found)
+            foreach (var update in request.Updates)
             {
-                if (update.SeqNum > wallet.SeqNum)
+                if (session.Read(update.WalletId, out var wallet).Found)
+                {
+                    wallet.Balance -= update.Amount;
+                    session.Upsert(update.WalletId, wallet);
+                }
+            }
+        }
+        else
+        {
+            foreach (var update in request.Updates)
+            {
+                if (session.Read(update.WalletId, out var wallet).Found)
                 {
                     wallet.Balance += update.Amount;
-                    wallet.SeqNum = update.SeqNum;
                     session.Upsert(update.WalletId, wallet);
                 }
             }

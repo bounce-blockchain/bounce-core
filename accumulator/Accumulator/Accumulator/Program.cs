@@ -30,29 +30,29 @@ public class Program
 
     static readonly Dictionary<int, string> NodeIpMapping = new Dictionary<int, string>
     {
-        // { 0, "127.0.0.1" },
+        { 0, "127.0.0.1" },
         // { 1, "127.0.0.1" },
-        
-        { 0, "192.168.1.10" },
-        { 1, "192.168.1.11" },
-        { 2, "192.168.1.12" },
-        { 3, "192.168.1.13" },
-        { 4, "192.168.1.14" },
-        { 5, "192.168.1.15" },
-        { 6, "192.168.1.16" },
-        { 7, "192.168.1.17" },
-        { 8, "192.168.1.18" },
-        { 9, "192.168.1.19" },
-        { 10, "192.168.1.20" },
-        { 11, "192.168.1.21" },
-        { 12, "192.168.1.22" },
-        { 13, "192.168.1.23" },
-        { 14, "192.168.1.24" },
-        { 15, "192.168.1.25" },
-        { 16, "192.168.1.26" },
-        { 17, "192.168.1.27" },
-        { 18, "192.168.1.28" },
-        { 19, "192.168.1.29" },
+        //
+        // { 0, "192.168.1.10" },
+        // { 1, "192.168.1.11" },
+        // { 2, "192.168.1.12" },
+        // { 3, "192.168.1.13" },
+        // { 4, "192.168.1.14" },
+        // { 5, "192.168.1.15" },
+        // { 6, "192.168.1.16" },
+        // { 7, "192.168.1.17" },
+        // { 8, "192.168.1.18" },
+        // { 9, "192.168.1.19" },
+        // { 10, "192.168.1.20" },
+        // { 11, "192.168.1.21" },
+        // { 12, "192.168.1.22" },
+        // { 13, "192.168.1.23" },
+        // { 14, "192.168.1.24" },
+        // { 15, "192.168.1.25" },
+        // { 16, "192.168.1.26" },
+        // { 17, "192.168.1.27" },
+        // { 18, "192.168.1.28" },
+        // { 19, "192.168.1.29" },
         // { 20, "192.168.1.30" },
         // { 21, "192.168.1.31" },
         // { 22, "192.168.1.32" },
@@ -205,7 +205,8 @@ public class Program
 
                 if (senderPartition == nodeId)
                 {
-                    if (session.Read(tx.From, out var senderWallet).Found && senderWallet.Balance >= tx.Value &&
+                    var found = session.Read(tx.From, out var senderWallet).Found;
+                    if (found && senderWallet.Balance >= tx.Value &&
                         senderWallet.SeqNum < tx.SeqNum)
                     {
                         senderWallet.Balance -= tx.Value;
@@ -221,22 +222,39 @@ public class Program
                                 session.Upsert(tx.To, receiverWallet);
                             }
                         }
-                        else
+                        // else
+                        // {
+                        //     // Add the update to the thread-local batch for the target node
+                        //     if (!localNodeUpdates.TryGetValue(receiverPartition, out var updatesList))
+                        //     {
+                        //         updatesList = new List<WalletUpdate>();
+                        //         localNodeUpdates[receiverPartition] = updatesList;
+                        //     }
+                        //
+                        //     updatesList.Add(new WalletUpdate
+                        //     {
+                        //         WalletId = tx.To,
+                        //         Amount = tx.Value,
+                        //         SeqNum = tx.SeqNum
+                        //     });
+                        // }
+                    }
+                    else if (found && receiverPartition != nodeId)
+                    {
+                        Console.WriteLine($"Balance: {senderWallet.Balance}, tx value: {tx.Value}, seq num: {senderWallet.SeqNum}, tx seq num: {tx.SeqNum}");
+                        // send the invalid transaction to the target node for undo
+                        if (!localNodeUpdates.TryGetValue(receiverPartition, out var updatesList))
                         {
-                            // Add the update to the thread-local batch for the target node
-                            if (!localNodeUpdates.TryGetValue(receiverPartition, out var updatesList))
-                            {
-                                updatesList = new List<WalletUpdate>();
-                                localNodeUpdates[receiverPartition] = updatesList;
-                            }
-
-                            updatesList.Add(new WalletUpdate
-                            {
-                                WalletId = tx.To,
-                                Amount = tx.Value,
-                                SeqNum = tx.SeqNum
-                            });
+                            updatesList = new List<WalletUpdate>();
+                            localNodeUpdates[receiverPartition] = updatesList;
                         }
+                        
+                        updatesList.Add(new WalletUpdate
+                        {
+                            WalletId = tx.To,
+                            Amount = tx.Value,
+                            SeqNum = tx.SeqNum,
+                        });
                     }
                     // else
                     // {
@@ -248,6 +266,18 @@ public class Program
                     //         Console.WriteLine($"Balance: {senderWallet.Balance}, tx value: {tx.Value}, seq num: {senderWallet.SeqNum}, tx seq num: {tx.SeqNum}");
                     //     }
                     // }
+                }
+                else if (receiverPartition == nodeId)
+                {
+                    if (session.Read(tx.To, out var receiverWallet).Found)
+                    {
+                        receiverWallet.Balance += tx.Value;
+                        session.Upsert(tx.To, receiverWallet);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Wallet {tx.To} not found on node {nodeId}.");
+                    }
                 }
             }
 
@@ -273,7 +303,7 @@ public class Program
 
         // Send batched updates to each partition
         var sending_updates_start = Stopwatch.StartNew();
-        var batchTasks = sharedNodeUpdates.Select(kvp => SendBatchUpdateToNode(kvp.Key, kvp.Value));
+        var batchTasks = sharedNodeUpdates.Select(kvp => SendBatchUpdateToNode(kvp.Key, kvp.Value, isUndo: true));
         await Task.WhenAll(batchTasks);
         sending_updates_start.Stop();
         Console.WriteLine($"Node {nodeId}: Sending updates took {sending_updates_start.ElapsedMilliseconds} ms.");
@@ -318,7 +348,7 @@ public class Program
     //     }
     // }
 
-    static async Task SendBatchUpdateToNode(int partition, List<WalletUpdate> updates)
+    static async Task SendBatchUpdateToNode(int partition, List<WalletUpdate> updates, bool isUndo)
     {
         Console.WriteLine($"Sending {updates.Count} updates to partition {partition}...");
         if (!NodeIpMapping.TryGetValue(partition, out var targetIp))
@@ -343,6 +373,7 @@ public class Program
 
             var response = await client.UpdateWalletsAsync(new WalletBatchUpdateRequest
             {
+                IsUndo = isUndo,
                 Updates = { updates }
             });
 

@@ -18,7 +18,8 @@ message WalletUpdate {
 }
 
 message WalletBatchUpdateRequest {
-  repeated WalletUpdate updates = 1;
+  bool isUndo = 1;
+  repeated WalletUpdate updates = 2;
 }
 
 message WalletBatchUpdateResponse {
