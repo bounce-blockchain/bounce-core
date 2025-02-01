@@ -187,8 +187,9 @@ public class Program
         Console.WriteLine($"Node {nodeId}: Processing {transactions.Length} transactions with {Environment.ProcessorCount} threads...");
         var stopwatch = Stopwatch.StartNew();
 
-        var transactionBatches = transactions.Chunk(transactions.Length / Environment.ProcessorCount);
-
+        var transactionBatches = transactions.Chunk(transactions.Length / Environment.ProcessorCount).ToList();
+        Console.WriteLine($"Node {nodeId}: Split transactions into {transactionBatches.Count} batches.");
+        
         // Shared node updates dictionary for merging at the end
         var sharedNodeUpdates = new ConcurrentDictionary<int, List<WalletUpdate>>();
 
@@ -197,12 +198,13 @@ public class Program
         {
             using var session = store.NewSession(new WalletFunctions());
             var localNodeUpdates = new Dictionary<int, List<WalletUpdate>>();
-
+        
+            var start = Stopwatch.StartNew();
             foreach (var tx in batch)
             {
                 int senderPartition = GetPartition(tx.From, totalPartitions);
                 int receiverPartition = GetPartition(tx.To, totalPartitions);
-
+        
                 if (senderPartition == nodeId)
                 {
                     var found = session.Read(tx.From, out var senderWallet).Found;
@@ -212,7 +214,7 @@ public class Program
                         senderWallet.Balance -= tx.Value;
                         senderWallet.SeqNum = tx.SeqNum;
                         session.Upsert(tx.From, senderWallet);
-
+        
                         if (receiverPartition == nodeId)
                         {
                             // Update receiver locally
@@ -280,7 +282,9 @@ public class Program
                     }
                 }
             }
-
+            start.Stop();
+            Console.WriteLine($"Node {nodeId}: Processed {batch.Length} transactions in {start.ElapsedMilliseconds} ms.");
+        
             // Merge localNodeUpdates into sharedNodeUpdates
             foreach (var kvp in localNodeUpdates)
             {
@@ -293,7 +297,7 @@ public class Program
                         {
                             existingList.AddRange(kvp.Value); // Merge lists
                         }
-
+        
                         return existingList;
                     });
             }
