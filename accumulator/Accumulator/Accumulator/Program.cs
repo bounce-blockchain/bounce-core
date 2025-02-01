@@ -187,8 +187,10 @@ public class Program
         Console.WriteLine($"Node {nodeId}: Processing {transactions.Length} transactions with {Environment.ProcessorCount} threads...");
         var stopwatch = Stopwatch.StartNew();
 
+        var chunking_start = Stopwatch.StartNew();
         var transactionBatches = transactions.Chunk(transactions.Length / Environment.ProcessorCount).ToList();
-        Console.WriteLine($"Node {nodeId}: Split transactions into {transactionBatches.Count} batches.");
+        chunking_start.Stop();
+        Console.WriteLine($"Node {nodeId}: Split transactions into {transactionBatches.Count} batches. Took {chunking_start.ElapsedMilliseconds} ms.");
         
         // Shared node updates dictionary for merging at the end
         var sharedNodeUpdates = new ConcurrentDictionary<int, List<WalletUpdate>>();
