@@ -26,7 +26,7 @@ public class Transaction
 public class Program
 {
     public static int NumTx = 8_000_000;
-    public static int NumWallets = 10_000_000;
+    public static int NumWallets = 1_000_000_000;
 
     static readonly Dictionary<int, string> NodeIpMapping = new Dictionary<int, string>
     {
@@ -241,7 +241,7 @@ public class Program
                     }
                     else if (found && receiverPartition != nodeId)
                     {
-                        Console.WriteLine($"Balance: {senderWallet.Balance}, tx value: {tx.Value}, seq num: {senderWallet.SeqNum}, tx seq num: {tx.SeqNum}");
+                        // Console.WriteLine($"Balance: {senderWallet.Balance}, tx value: {tx.Value}, seq num: {senderWallet.SeqNum}, tx seq num: {tx.SeqNum}");
                         // send the invalid transaction to the target node for undo
                         if (!localNodeUpdates.TryGetValue(receiverPartition, out var updatesList))
                         {
