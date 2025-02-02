@@ -25,7 +25,7 @@ public class Transaction
 
 public class Program
 {
-    public static int NumTx = 8_000_000;
+    public static int NumTx = 10_000_000;
     public static int NumWallets = 1_000_000_000;
 
     static readonly Dictionary<int, string> NodeIpMapping = new Dictionary<int, string>
@@ -112,8 +112,12 @@ public class Program
         // Start transaction processing in the background
         _ = Task.Run(async () =>
         {
-            var transactions = GenerateTransactions(NumTx, NumWallets);
-            await ProcessTransactionsAsync(store, transactions, nodeId, totalPartitions);
+            for (int i = 1; NumTx>0; ++i)
+            {
+                var transactions = GenerateTransactions(NumTx, NumWallets,i);
+                await ProcessTransactionsAsync(store, transactions, nodeId, totalPartitions);
+                NumTx -= 1_000_000;
+            }
         });
 
         // Start periodic checkpointing
@@ -161,7 +165,7 @@ public class Program
         Console.WriteLine($"Node {nodeId}: Initialized {counter} wallets.");
     }
 
-    static Transaction[] GenerateTransactions(int totalTransactions, int totalWallets)
+    static Transaction[] GenerateTransactions(int totalTransactions, int totalWallets, int seqNum)
     {
         Console.WriteLine("Generating transactions...");
         var random = new Random();
@@ -173,9 +177,9 @@ public class Program
             {
                 From = random.Next(0, totalWallets),
                 To = random.Next(0, totalWallets),
-                Value = random.Next(1, 500),
+                Value = random.Next(1, 100),
                 Data = new byte[360],
-                SeqNum = 1
+                SeqNum = seqNum
             };
         }
 
