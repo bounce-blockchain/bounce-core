@@ -105,7 +105,7 @@ public class Program
         // Start gRPC server
         Console.WriteLine($"Node {nodeId}: Starting gRPC server...");
         var grpcServer = StartGrpcServer(store, ipAddress).RunAsync();
-        
+
         // Wait for all nodes to be ready
         await WaitForAllNodesReady(nodeId, totalPartitions);
 
@@ -152,6 +152,7 @@ public class Program
                         localCounter++;
                     }
                 }
+
                 Interlocked.Add(ref counter, localCounter);
             });
         });
@@ -177,6 +178,7 @@ public class Program
                 SeqNum = 1
             };
         }
+
         Console.WriteLine("Transactions generated.");
         return transactions;
     }
@@ -184,29 +186,32 @@ public class Program
     static async Task ProcessTransactionsAsync(FasterKV<long, Wallet.Wallet> store, Transaction[] transactions,
         int nodeId, int totalPartitions)
     {
-        Console.WriteLine($"Node {nodeId}: Processing {transactions.Length} transactions with {Environment.ProcessorCount} threads...");
+        Console.WriteLine(
+            $"Node {nodeId}: Processing {transactions.Length} transactions with {Environment.ProcessorCount} threads...");
         var stopwatch = Stopwatch.StartNew();
 
         var chunking_start = Stopwatch.StartNew();
         var transactionBatches = transactions.Chunk(transactions.Length / Environment.ProcessorCount).ToList();
         chunking_start.Stop();
-        Console.WriteLine($"Node {nodeId}: Split transactions into {transactionBatches.Count} batches. Took {chunking_start.ElapsedMilliseconds} ms.");
-        
+        Console.WriteLine(
+            $"Node {nodeId}: Split transactions into {transactionBatches.Count} batches. Took {chunking_start.ElapsedMilliseconds} ms.");
+
         // Shared node updates dictionary for merging at the end
         var sharedNodeUpdates = new ConcurrentDictionary<int, List<WalletUpdate>>();
 
         var local_processing_start = Stopwatch.StartNew();
-        await Parallel.ForEachAsync(transactionBatches, async (batch, _) =>
+        //await Parallel.ForEachAsync(transactionBatches, async (batch, _) =>
+        foreach (var batch in transactionBatches)
         {
             using var session = store.NewSession(new WalletFunctions());
             var localNodeUpdates = new Dictionary<int, List<WalletUpdate>>();
-        
+
             var start = Stopwatch.StartNew();
             foreach (var tx in batch)
             {
                 int senderPartition = GetPartition(tx.From, totalPartitions);
                 int receiverPartition = GetPartition(tx.To, totalPartitions);
-        
+
                 if (senderPartition == nodeId)
                 {
                     var found = session.Read(tx.From, out var senderWallet).Found;
@@ -216,7 +221,7 @@ public class Program
                         senderWallet.Balance -= tx.Value;
                         senderWallet.SeqNum = tx.SeqNum;
                         session.Upsert(tx.From, senderWallet);
-        
+
                         if (receiverPartition == nodeId)
                         {
                             // Update receiver locally
@@ -252,7 +257,7 @@ public class Program
                             updatesList = new List<WalletUpdate>();
                             localNodeUpdates[receiverPartition] = updatesList;
                         }
-                        
+
                         updatesList.Add(new WalletUpdate
                         {
                             WalletId = tx.To,
@@ -284,9 +289,11 @@ public class Program
                     }
                 }
             }
+
             start.Stop();
-            Console.WriteLine($"Node {nodeId}: Processed {batch.Length} transactions in {start.ElapsedMilliseconds} ms.");
-        
+            Console.WriteLine(
+                $"Node {nodeId}: Processed {batch.Length} transactions in {start.ElapsedMilliseconds} ms.");
+
             // Merge localNodeUpdates into sharedNodeUpdates
             foreach (var kvp in localNodeUpdates)
             {
@@ -299,11 +306,12 @@ public class Program
                         {
                             existingList.AddRange(kvp.Value); // Merge lists
                         }
-        
+
                         return existingList;
                     });
             }
-        });
+        }
+
         local_processing_start.Stop();
         Console.WriteLine($"Node {nodeId}: Local processing took {local_processing_start.ElapsedMilliseconds} ms.");
 
@@ -317,7 +325,7 @@ public class Program
         stopwatch.Stop();
         Console.WriteLine($"Node {nodeId}: Transaction processing took {stopwatch.ElapsedMilliseconds} ms.");
     }
-    
+
     static int GetPartition(long walletId, int totalPartitions)
     {
         return (int)(walletId % totalPartitions);
@@ -398,7 +406,7 @@ public class Program
     {
         Console.WriteLine($"Node {nodeId}: Waiting for all nodes to be ready...");
         await Task.Delay(5000);
-    
+
         var unresponsiveNodes = Enumerable.Range(0, totalPartitions)
             .Where(id => id != nodeId)
             .ToList();
@@ -411,11 +419,14 @@ public class Program
         {
             if (retryCount >= maxRetries)
             {
-                Console.WriteLine($"Node {nodeId}: Timed out waiting for nodes {string.Join(", ", unresponsiveNodes)} to be ready.");
+                Console.WriteLine(
+                    $"Node {nodeId}: Timed out waiting for nodes {string.Join(", ", unresponsiveNodes)} to be ready.");
                 return;
             }
+
             retryCount++;
-            Console.WriteLine($"Node {nodeId}: Attempt {retryCount}, contacting {unresponsiveNodes.Count} unresponsive nodes...");
+            Console.WriteLine(
+                $"Node {nodeId}: Attempt {retryCount}, contacting {unresponsiveNodes.Count} unresponsive nodes...");
 
             // Check readiness for remaining unresponsive nodes
             var tasks = unresponsiveNodes.Select(async otherNodeId =>
@@ -447,7 +458,7 @@ public class Program
 
         Console.WriteLine($"Node {nodeId}: All nodes are ready.");
     }
-    
+
     static async Task<bool> IsNodeReady(string targetIp, int nodeId)
     {
         try
