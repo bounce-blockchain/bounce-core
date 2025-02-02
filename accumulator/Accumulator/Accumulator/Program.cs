@@ -305,6 +305,7 @@ public class Program
                 $"Node {nodeId}: Processed {endId - startId} transactions in {start.ElapsedMilliseconds} ms.");
 
             // Merge localNodeUpdates into sharedNodeUpdates
+            start = Stopwatch.StartNew();
             foreach (var kvp in localNodeUpdates)
             {
                 sharedNodeUpdates.AddOrUpdate(
@@ -320,6 +321,9 @@ public class Program
                         return existingList;
                     });
             }
+            start.Stop();
+            Console.WriteLine(
+                $"Node {nodeId}: Merging updates took {start.ElapsedMilliseconds} ms.");
         });
 
         local_processing_start.Stop();
