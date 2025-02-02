@@ -190,25 +190,31 @@ public class Program
             $"Node {nodeId}: Processing {transactions.Length} transactions with {Environment.ProcessorCount} threads...");
         var stopwatch = Stopwatch.StartNew();
 
-        var chunking_start = Stopwatch.StartNew();
-        var transactionBatches = transactions.Chunk(transactions.Length / Environment.ProcessorCount).ToList();
-        chunking_start.Stop();
-        Console.WriteLine(
-            $"Node {nodeId}: Split transactions into {transactionBatches.Count} batches. Took {chunking_start.ElapsedMilliseconds} ms.");
+        // var chunking_start = Stopwatch.StartNew();
+        // var transactionBatches = transactions.Chunk(transactions.Length / Environment.ProcessorCount).ToList();
+        // chunking_start.Stop();
+        // Console.WriteLine(
+        //     $"Node {nodeId}: Split transactions into {transactionBatches.Count} batches. Took {chunking_start.ElapsedMilliseconds} ms.");
 
         // Shared node updates dictionary for merging at the end
         var sharedNodeUpdates = new ConcurrentDictionary<int, List<WalletUpdate>>();
 
         var local_processing_start = Stopwatch.StartNew();
-        //await Parallel.ForEachAsync(transactionBatches, async (batch, _) =>
-        foreach (var batch in transactionBatches)
+        var batchSize = transactions.Length / Environment.ProcessorCount;
+        var numThreads = Environment.ProcessorCount;
+        await Parallel.ForAsync(0, numThreads, async (threadIndex, _) =>
         {
             using var session = store.NewSession(new WalletFunctions());
             var localNodeUpdates = new Dictionary<int, List<WalletUpdate>>();
 
+            int startId = threadIndex * batchSize;
+            int endId = (threadIndex == numThreads - 1) ? transactions.Length : startId + batchSize;
             var start = Stopwatch.StartNew();
-            foreach (var tx in batch)
+
+            for (int i = startId; i < endId; i++)
             {
+                var tx = transactions[i];
+                
                 int senderPartition = GetPartition(tx.From, totalPartitions);
                 int receiverPartition = GetPartition(tx.To, totalPartitions);
 
@@ -292,7 +298,7 @@ public class Program
 
             start.Stop();
             Console.WriteLine(
-                $"Node {nodeId}: Processed {batch.Length} transactions in {start.ElapsedMilliseconds} ms.");
+                $"Node {nodeId}: Processed {endId - startId} transactions in {start.ElapsedMilliseconds} ms.");
 
             // Merge localNodeUpdates into sharedNodeUpdates
             foreach (var kvp in localNodeUpdates)
@@ -310,7 +316,7 @@ public class Program
                         return existingList;
                     });
             }
-        }
+        });
 
         local_processing_start.Stop();
         Console.WriteLine($"Node {nodeId}: Local processing took {local_processing_start.ElapsedMilliseconds} ms.");
