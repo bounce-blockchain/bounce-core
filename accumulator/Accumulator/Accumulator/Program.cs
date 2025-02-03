@@ -112,11 +112,10 @@ public class Program
         // Start transaction processing in the background
         _ = Task.Run(async () =>
         {
-            for (int i = 1; NumTx>0; ++i)
+            for (int i = 1, curTxs=1_000_000; curTxs<=NumTx; ++i, curTxs+=1_000_000)
             {
-                var transactions = GenerateTransactions(NumTx, NumWallets,i);
+                var transactions = GenerateTransactions(curTxs, NumWallets,i);
                 await ProcessTransactionsAsync(store, transactions, nodeId, totalPartitions);
-                NumTx -= 1_000_000;
             }
         });
 
