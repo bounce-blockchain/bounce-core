@@ -1,3 +1,9 @@
 /target
 .idea/
 store/
+
+accumulator/.idea/
+accumulator/Accumulator/Accumulator/obj/*
+accumulator/Accumulator/Accumulator/bin/*
+accumulator/Accumulator/AccumulatorTest/obj/*
+accumulator/Accumulator/AccumulatorTest/bin/*
