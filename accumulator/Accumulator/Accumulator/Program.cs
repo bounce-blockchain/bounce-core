@@ -112,26 +112,39 @@ public class Program
         // Start transaction processing in the background
         _ = Task.Run(async () =>
         {
-            for (int i = 1, curTxs=1_000_000; curTxs<=NumTx; ++i, curTxs+=1_000_000)
+            // for (int i = 1, curTxs=1_000_000; curTxs<=NumTx; ++i, curTxs+=1_000_000)
+            // {
+            //     var transactions = GenerateTransactions(curTxs, NumWallets,i);
+            //     await ProcessTransactionsAsync(store, transactions, nodeId, totalPartitions);
+            // }
+            for (int i = 1; i<=30; ++i)
             {
-                var transactions = GenerateTransactions(curTxs, NumWallets,i);
+                var transactions = GenerateTransactions(NumTx, NumWallets,i);
                 await ProcessTransactionsAsync(store, transactions, nodeId, totalPartitions);
+                if (i % 10 == 0)
+                {
+                    Console.WriteLine($"Node {nodeId}: Taking checkpoint...");
+                    var stopwatch = Stopwatch.StartNew();
+                    store.TakeFullCheckpointAsync(CheckpointType.FoldOver).GetAwaiter().GetResult();
+                    stopwatch.Stop();
+                    Console.WriteLine($"Node {nodeId}: Checkpoint completed in {stopwatch.ElapsedMilliseconds} ms.");
+                }
             }
         });
 
         // Start periodic checkpointing
-        _ = Task.Run(async () =>
-        {
-            while (true)
-            {
-                await Task.Delay(TimeSpan.FromMinutes(5)); // Checkpoint every 5 minutes
-                Console.WriteLine($"Node {nodeId}: Taking checkpoint...");
-                var stopwatch = Stopwatch.StartNew();
-                store.TakeFullCheckpointAsync(CheckpointType.FoldOver).GetAwaiter().GetResult();
-                stopwatch.Stop();
-                Console.WriteLine($"Node {nodeId}: Checkpoint completed in {stopwatch.ElapsedMilliseconds} ms.");
-            }
-        });
+        // _ = Task.Run(async () =>
+        // {
+        //     while (true)
+        //     {
+        //         await Task.Delay(TimeSpan.FromMinutes(5)); // Checkpoint every 5 minutes
+        //         Console.WriteLine($"Node {nodeId}: Taking checkpoint...");
+        //         var stopwatch = Stopwatch.StartNew();
+        //         store.TakeFullCheckpointAsync(CheckpointType.FoldOver).GetAwaiter().GetResult();
+        //         stopwatch.Stop();
+        //         Console.WriteLine($"Node {nodeId}: Checkpoint completed in {stopwatch.ElapsedMilliseconds} ms.");
+        //     }
+        // });
 
         // Keep the gRPC server running indefinitely
         await grpcServer;
@@ -162,6 +175,11 @@ public class Program
         Task.WaitAll(initTasks.ToArray());
         Console.WriteLine($"Node {nodeId}: Wallet initialization complete.");
         Console.WriteLine($"Node {nodeId}: Initialized {counter} wallets.");
+        Console.WriteLine($"Node {nodeId}: Taking initial checkpoint...");
+        var stopwatch = Stopwatch.StartNew();
+        store.TakeFullCheckpointAsync(CheckpointType.FoldOver).GetAwaiter().GetResult();
+        stopwatch.Stop();
+        Console.WriteLine($"Node {nodeId}: Checkpoint completed in {stopwatch.ElapsedMilliseconds} ms.");
     }
 
     static Transaction[] GenerateTransactions(int totalTransactions, int totalWallets, int seqNum)
