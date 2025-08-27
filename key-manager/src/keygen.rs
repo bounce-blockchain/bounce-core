@@ -1,3 +1,6 @@
+// This source code can be freely used for research purposes.
+// For any other purpose, please contact the authors.
+
 use clap::{Parser};
 use bls::min_pk::{SecretKey};
 use std::{

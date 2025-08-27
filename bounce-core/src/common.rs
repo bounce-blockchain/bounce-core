@@ -1,3 +1,6 @@
+// This source code can be freely used for research purposes.
+// For any other purpose, please contact the authors.
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn output_current_time(msg: &str) {

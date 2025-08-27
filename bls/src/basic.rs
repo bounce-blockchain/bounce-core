@@ -1,3 +1,6 @@
+// This source code can be freely used for research purposes.
+// For any other purpose, please contact the authors.
+
 #[macro_export]
 macro_rules! impl_basic {
     ($dst: expr) => {

@@ -1,3 +1,6 @@
+// This source code can be freely used for research purposes.
+// For any other purpose, please contact the authors.
+
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;

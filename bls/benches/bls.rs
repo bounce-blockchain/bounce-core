@@ -1,3 +1,6 @@
+// This source code can be freely used for research purposes.
+// For any other purpose, please contact the authors.
+
 use bls::min_pk::proof_of_possession::*;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand::{RngCore, SeedableRng};
