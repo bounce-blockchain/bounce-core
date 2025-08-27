@@ -5,6 +5,7 @@ Official implementation of **[Bounce: A High Performance Satellite-Based Blockch
 **Xiaoteng (Frank) Liu** · **Taegyun Kim** · **Dennis E. Shasha**
 
 > If you use this code, please cite the paper (see **BibTeX** below).
+> This code is available only for research purposes. For any other purposes, please contact the authors.
 
 ---
 
